@@ -1,0 +1,11 @@
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { mkdirSync, readFileSync, existsSync } from 'node:fs';
+export const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const path = resolve(root, process.env.AXIOM_CONFIG ?? 'axiom.config.json');
+const user = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8').replace(/^\uFEFF/, '')) : {};
+export const config = { port: 4789, workspace: 'workspace', sessionDir: '.sessions', ...user };
+config.workspace = resolve(root, config.workspace);
+config.sessionDir = resolve(root, config.sessionDir);
+mkdirSync(config.workspace, { recursive: true });
+mkdirSync(config.sessionDir, { recursive: true });

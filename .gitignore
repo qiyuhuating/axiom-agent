@@ -1,0 +1,26 @@
+# Local data and secrets
+node_modules/
+.sessions/
+workspace/
+upstream/
+.browser-test/
+.workbench-test/
+.cordis/
+axiom.config.json
+axiom.local.json
+.env
+.env.*
+*.log
+*.jsonl
+*.token
+auth.json
+credentials.json
+models-store.json
+trust.json
+.pi/
+# Generated UI bundles
+public/dsh-ui.js
+public/dsh-ui.css
+public/workbench.js
+public/workbench.css
+public/chunks/

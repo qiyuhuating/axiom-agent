@@ -1,0 +1,19 @@
+import React,{useEffect,useRef,useState} from 'react';
+import {Terminal} from '@xterm/xterm';
+import {FitAddon} from '@xterm/addon-fit';
+import {api,terminalAction,msg,errorBox,Header} from './panel-shared.tsx';
+export default function TerminalView(){
+ const node=useRef<HTMLDivElement>(null),[error,setError]=useState(''),[id,setId]=useState(''),[exit,setExit]=useState<number|null>(null),[terminals,setTerminals]=useState<any[]>([]),[selected,setSelected]=useState(''),[interrupted,setInterrupted]=useState(false);
+ useEffect(()=>{void api('terminals').then(setTerminals).catch(e=>setError(msg(e)));},[]);
+ useEffect(()=>{if(!selected)return;setExit(null);setInterrupted(false);setError('');let disposed=false,termId='',eventSource:EventSource|undefined,observer:ResizeObserver|undefined;
+ const term=new Terminal({fontFamily:'Consolas, monospace',fontSize:13,scrollback:2000,theme:{background:'#15171a',foreground:'#e5e9ed',cursor:'#b2e1cc'},cursorBlink:true,allowProposedApi:false});
+ const fit=new FitAddon();term.loadAddon(fit);term.open(node.current!);
+ const input=term.onData(data=>{if(termId)void terminalAction('input',{id:termId,data}).catch(e=>setError(msg(e)));});
+ async function launch(){try{const created=selected.startsWith('new:')?await terminalAction('create'):{id:selected};termId=created.id;if(disposed){if(selected.startsWith('new:'))await terminalAction('close',{id:termId});return;}setId(termId);
+ eventSource=new EventSource('/api/terminal/events?id='+encodeURIComponent(termId));eventSource.onmessage=({data})=>{const e=JSON.parse(data);if(e.snapshot){term.reset();setInterrupted(Boolean(e.interrupted));if(e.interrupted||typeof e.exit==='number')term.options.disableStdin=true;}if(e.data)term.write(e.data);if(typeof e.exit==='number'){setExit(e.exit);term.options.disableStdin=true;}if(e.closed)eventSource?.close();};eventSource.onerror=()=>setError('终端连接中断');
+ const resize=()=>{if(!term.options.disableStdin&&node.current?.clientWidth&&node.current.clientHeight){fit.fit();void terminalAction('resize',{id:termId,cols:term.cols,rows:term.rows}).catch(e=>setError(msg(e)));}};
+ observer=new ResizeObserver(resize);observer.observe(node.current!);resize();}catch(e){setError(msg(e));}}
+ void launch();return()=>{disposed=true;observer?.disconnect();eventSource?.close();input.dispose();term.dispose();};
+ },[selected]);
+ return <div className="wb-panel"><Header><strong>PowerShell 7</strong><button type="button" onClick={()=>{setSelected('new:'+crypto.randomUUID());}}>新建</button>{id&&<button type="button" onClick={()=>{void terminalAction('close',{id}).then(()=>{setSelected('');setId('');return api('terminals');}).then(setTerminals).catch(e=>setError(msg(e)));}}>结束</button>}{interrupted&&<span>已中断：历史输出</span>}{id&&!interrupted&&exit===null&&<span className="wb-muted">已连接</span>}{exit!==null&&<span>退出码 {exit}</span>}</Header>{errorBox(error)}{!selected&&<div>{terminals.map(t=><button key={t.id} type="button" onClick={()=>setSelected(t.id)}>恢复 {t.id.slice(0,8)} {t.interrupted?'已中断':t.exit===null?'运行中':'已退出'}</button>)}</div>}<div ref={node} className="wb-terminal"/></div>;
+}

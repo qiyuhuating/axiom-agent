@@ -1,0 +1,7 @@
+{
+  "port": 4789,
+  "runtimePort": 4790,
+  "workspace": "workspace",
+  "sessionDir": ".sessions",
+  "discoverContext": true
+}
