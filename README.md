@@ -32,6 +32,20 @@ Copy the example and set the workspace, session directory and optional model/pro
 
 The background runtime survives Web server shutdown. To stop it deliberately, finish your work and run `npm run runtime:stop`. Windows login autostart is optional, not enabled automatically.
 
+### Windows desktop preview
+
+The desktop target uses Tauri 2 and the system WebView2 runtime, not Electron. Builds require Windows x64, Node.js 24, PowerShell 7, Rust with the MSVC toolchain, and Visual Studio C++ Build Tools with a Windows SDK.
+
+```powershell
+npm ci
+npm run prepare:desktop
+node scripts/check-desktop-runtime.mjs
+cargo check --locked --manifest-path src-tauri/Cargo.toml
+npm run desktop:build
+```
+
+The NSIS build stages a checksum-verified Node.js 24.16.0 distribution and npm, production dependencies, and compiled UI. It excludes build-only frontend dependencies, non-x64 terminal binaries, and terminal debug symbols. The desktop app stores configuration and sessions under its local app data directory, uses a dynamically assigned loopback HTTP port, and retains the separate background runtime (default desktop runtime port 4798). PowerShell 7 and Git remain external tools. The runtime payload and Rust compile check have been verified on Windows x64; complete installer and WebView interaction validation remain pending.
+
 ## Architecture
 
 | Layer | Implementation |

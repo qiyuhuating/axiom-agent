@@ -17,3 +17,6 @@ jobs:
       - run: npm ci
       - run: npm run build:ui
       - run: npm test
+      - run: npm run prepare:desktop
+      - run: node scripts/check-desktop-runtime.mjs
+      - run: cargo check --locked --manifest-path src-tauri/Cargo.toml
