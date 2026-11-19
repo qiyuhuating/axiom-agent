@@ -15,6 +15,7 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - run: npm run lint
       - run: npm run build:ui
       - run: npm test
       - name: Build Windows x64 NSIS installer

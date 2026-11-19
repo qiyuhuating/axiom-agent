@@ -51,3 +51,4 @@ body.workbench-wide{grid-template-columns:var(--sidebar-width,280px) minmax(0,1f
 #show-workbench{display:none}
 @media(max-width:999px){#show-workbench{display:inline-flex}.inspector{display:none}body.workbench-mobile .inspector{display:flex;position:fixed;inset:65px 0 0 auto;width:min(95vw,650px);z-index:30;background:var(--panel);box-shadow:-20px 0 60px #0006}body.workbench-wide{grid-template-columns:var(--sidebar-width,264px) minmax(0,1fr)}}
 @media(max-width:650px){body.workbench-wide{grid-template-columns:minmax(0,1fr)}}
+.wb-readonly{display:flex;flex-direction:column;gap:6px;color:var(--muted)}
