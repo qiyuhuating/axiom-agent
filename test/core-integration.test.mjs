@@ -37,7 +37,10 @@ async function fixture() {
 }
 test("HTTP host: authenticated runtime, restart, extension confirmation and stale response", {timeout:90000}, async()=>{
   const f=await fixture();
-  const child=spawn(process.execPath,[resolve("src/server.mjs")],{env:f.env,stdio:["pipe","pipe","pipe"],windowsHide:true});
+  const gateway=process.env.AXIOM_TEST_GATEWAY;
+  const root=resolve(process.env.AXIOM_TEST_RUNTIME_ROOT || ".");
+  const host=join(root,"src/server.mjs");
+  const child=spawn(gateway || process.execPath,gateway?["--gateway",process.execPath,host]:[host],{env:f.env,stdio:["pipe","pipe","pipe"],windowsHide:true});
   const exited=once(child,"exit");
   let stderr="";
   child.stderr.on("data",d=>{stderr+=d;});
@@ -51,6 +54,15 @@ test("HTTP host: authenticated runtime, restart, extension confirmation and stal
   const post=(path,body,authorized=true)=>fetch(base+"/api/"+path,{method:"POST",headers:{"Content-Type":"application/json",...(authorized?{Origin:base,"X-Axiom-Client":"1"}:{Origin:"https://example.invalid"})},body:JSON.stringify(body),signal:AbortSignal.timeout(35000)});
   try {
     await until(()=>base,20000);
+    if(gateway){
+      const privatePort=await until(()=>/Axiom Agent http:\/\/127\.0\.0\.1:(\d+)/.exec(stderr)?.[1]);
+      assert.notEqual(Number(privatePort),Number(new URL(base).port));
+      const bypass=await new Promise((resolve,reject)=>{const req=request("http://127.0.0.1:"+privatePort+"/api/state",{headers:{Host:new URL(base).host,"X-Axiom-Gateway-Secret":"forged"}},res=>{res.resume();resolve(res.statusCode);});req.on("error",reject);req.end();});
+      assert.equal(bypass,403);
+      const invalidHost=await new Promise((resolve,reject)=>{const req=request(base+"/api/state",{headers:{Host:"example.invalid"}},res=>{res.resume();resolve(res.statusCode);});req.on("error",reject);req.end();});
+      assert.equal(invalidHost,403);
+      const asset=await fetch(base+"/app.js");assert.ok(asset.ok);assert.match(await asset.text(),/EventSource/);
+    }
     token=await readFile(join(f.sessionDir,"runtime.token"),"utf8");
     const first=await get("runtime-health");
     assert.equal(first.ok,true);

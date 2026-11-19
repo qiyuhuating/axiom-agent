@@ -16,7 +16,7 @@ struct Host(Mutex<Child>);
 fn stop_host(child: &mut Child) {
     // EOF is the desktop host's graceful shutdown signal.
     drop(child.stdin.take());
-    let until = Instant::now() + Duration::from_secs(5);
+    let until = Instant::now() + Duration::from_secs(7);
     while Instant::now() < until {
         if matches!(child.try_wait(), Ok(Some(_))) {
             return;
@@ -46,6 +46,9 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             "workspace": data.join("workspace"),
             "sessionDir": data.join("sessions"),
             "runtimePort": 4798,
+            "nativeGateway": true,
+            "terminalBackend": "rust",
+            "rustTerminalPort": 4799,
             "discoverContext": true
         });
         fs::write(&config, serde_json::to_vec_pretty(&defaults)?)?;
@@ -58,8 +61,28 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .create(true)
         .append(true)
         .open(data.join("desktop-host.log"))?;
-    let mut child = Command::new(bin.join("node.exe"))
-        .arg(runtime.join("src/server.mjs"))
+    let config_bytes = fs::read(&config)?;
+    let settings: serde_json::Value = serde_json::from_slice(
+        config_bytes
+            .strip_prefix(&[0xef, 0xbb, 0xbf])
+            .unwrap_or(&config_bytes),
+    )?;
+    let node = bin.join("node.exe");
+    let server = runtime.join("src/server.mjs");
+    let mut command = if settings
+        .get("nativeGateway")
+        .and_then(serde_json::Value::as_bool)
+        == Some(true)
+    {
+        let mut command = Command::new(bin.join("axiom-daemon.exe"));
+        command.arg("--gateway").arg(&node).arg(&server);
+        command
+    } else {
+        let mut command = Command::new(&node);
+        command.arg(&server);
+        command
+    };
+    let mut child = command
         .current_dir(&runtime)
         .env("AXIOM_CONFIG", &config)
         .env("AXIOM_DESKTOP", "1")

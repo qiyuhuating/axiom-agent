@@ -124,7 +124,9 @@ test("workbench routes Rust terminal and preserves live session across host rest
   await writeFile(config,JSON.stringify({workspace,sessionDir,runtimePort,rustTerminalPort,terminalBackend:"rust",rustTerminalBinary:daemon,discoverContext:false}));
   let host;
   async function startHost(expectMismatch=false){
-    const child=spawn(process.execPath,[join(runtimeRoot,"src/server.mjs")],{
+    const gateway=process.env.AXIOM_TEST_GATEWAY;
+    const privateHost=join(runtimeRoot,"src/server.mjs");
+    const child=spawn(gateway || process.execPath,gateway?["--gateway",process.execPath,privateHost]:[privateHost],{
       env:{...process.env,AXIOM_CONFIG:config,AXIOM_DESKTOP:"1",PI_CODING_AGENT_DIR:join(dir,"pi-agent")},
       stdio:["pipe","pipe","pipe"],windowsHide:true
     });

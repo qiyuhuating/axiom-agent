@@ -1,6 +1,6 @@
 # Rust host migration: phase 1
 
-This PR is the first staged migration slice, not the final Rust gateway. Pi remains the only agent engine. The Node host, job runtime, Cordis, and legacy node-pty backend are unchanged by default.
+This PR adds the first native HTTP gateway and PTY migration slice. The optional Rust listener owns the public loopback HTTP ingress while the existing Node host remains the private handler for business routes. Pi remains the only agent engine. The Node business host, job runtime, Cordis, and legacy node-pty implementation remain available. New desktop configurations default to Rust ingress and PTY; existing configurations are not rewritten.
 
 ## Try in an isolated workspace
 
@@ -36,12 +36,18 @@ Set AXIOM_CONFIG to that file before starting the host. Desktop staging bundles 
 - Node and Rust direct endpoints, Node-to-Rust Cordis bridge and HTTP host restart all use the same contract tests with actual PTY processes. The browser/desktop UI protocol is unchanged; clients must answer normal terminal device-status queries.
 - The Rust archive is separate (rust-terminals.json). Stop the legacy runtime and verify that no process still owns the legacy session directory before setting importLegacyTerminalHistory to true. On first startup, the daemon imports the existing terminals.json under its exclusive archive lock, marks unfinished sessions interrupted, and writes the new archive atomically. The original file is preserved; an existing Rust archive always takes precedence, even when empty. Active processes are not transferred. The Web host now rejects a runtime with a different terminalBackend rather than silently reusing it. Stop the authenticated runtime after finishing active jobs and terminals, edit the configuration, and restart. Older runtimes without a backend field are treated as Node.
 
+## Native HTTP ingress (preview)
+
+Set nativeGateway to true in the desktop configuration to use the bundled Rust executable as the public loopback listener. It launches Node on a private ephemeral port, forwards streaming request/response bodies without buffering and uses a fresh internal secret to prevent direct access. The Node host checks the original public Host and Origin, and the secret is removed from its environment before launching Pi or background processes. Stopping the gateway closes the private Node host; scheduled jobs and terminals remain independent. New desktop installations use the Rust ingress and PTY by default. Existing installations retain their configured/default Node ingress until the owner explicitly opts in.
+
+The source test can be run with AXIOM_TEST_GATEWAY pointing at the built daemon; the packaged CI repeats the HTTP integration test and full terminal restart path through the Rust listener. This gateway does not yet implement the business handlers in Rust.
+
 ## Remaining gates before removing node-pty
 
-- Repeat xterm/WebView end-to-end acceptance on the exact updated NSIS artifact. A local installed fixture using the updated UI and Rust executable passed keyboard ordering, UTF-8, page reload, reconnect, and terminal close. A reproducible manual driver is in scripts/check-installed-terminal.mjs.
+- Repeat xterm/WebView end-to-end acceptance on the exact updated NSIS artifact with the native gateway and new-install defaults. The previous CI installer passed keyboard ordering, UTF-8, page reload, reconnect, and terminal close on both backends. A reproducible manual driver is in scripts/check-installed-terminal.mjs.
 - The Axiom Cordis terminal service retains synchronous list/get/action and stable record/listener semantics through a dedicated RPC worker, with asynchronous HTTP requests on the ordinary gateway. The included actual Loader plugin tests these calls and PTY write/resize. A compatibility PTY facade also exposes kill/onData/onExit; it is not a native node-pty instance. Do not switch plugins depending on undocumented native handles or other node-pty internals.
 - Offline legacy history import is tested; automatic cutover, active process migration, installer upgrade/rollback, and owner-only token/lock-file provisioning remain pending. Windows Job Objects are attached before exposing the terminal to input: actual subprocess cleanup on explicit close, daemon shutdown, and daemon crash is covered. Upstream portable-pty launches the process before attachment; this is not an atomic Windows startup job-list assignment. Non-Windows process-tree cleanup remains fail-closed.
-- Final Rust gateway ownership (all existing host routes) is not yet implemented. Keep the Node runtime and all existing packages until the corresponding parity gate passes.
+- Native HTTP ingress is implemented; Rust has not yet taken over every business-route implementation. Keep the Node runtime and all existing packages until the corresponding parity gate passes.
 
 Phase 2 will migrate sandboxing, DAG, Cron and team state only after phase 1 acceptance; phase 3 will migrate Pi RPC lifecycle/idle eviction. No inference engine rewrite.
 

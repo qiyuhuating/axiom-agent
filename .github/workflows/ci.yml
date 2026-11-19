@@ -28,6 +28,16 @@ jobs:
           $env:AXIOM_TEST_RUNTIME_ROOT = (Resolve-Path .desktop-runtime).Path
           & .desktop-runtime/bin/node.exe --test scripts/check-terminal-parity.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Rust HTTP ingress parity
+        shell: pwsh
+        run: |
+          $env:AXIOM_TEST_GATEWAY = (Resolve-Path .desktop-runtime/bin/axiom-daemon.exe).Path
+          $env:AXIOM_TEST_RUNTIME_ROOT = (Resolve-Path .desktop-runtime).Path
+          $env:AXIOM_TEST_DAEMON = $env:AXIOM_TEST_GATEWAY
+          & .desktop-runtime/bin/node.exe --test --test-name-pattern "HTTP host" test/core-integration.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & .desktop-runtime/bin/node.exe --test --test-name-pattern "workbench routes" scripts/check-terminal-parity.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify installer and generate checksums
         shell: pwsh
         run: |

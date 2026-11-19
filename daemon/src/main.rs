@@ -1,5 +1,6 @@
 //! First migration slice: the native terminal HTTP contract.
 //! The existing Node runtime remains authoritative until parity gates pass.
+mod gateway;
 mod process_tree;
 use anyhow::{bail, Context, Result};
 use axum::{
@@ -556,6 +557,9 @@ async fn events(State(app): State<App>, Query(query): Query<TerminalQuery>) -> R
 async fn main() -> Result<()> {
     // Explicit standalone test/preview entry. Do not share a live Node archive.
     let args: Vec<_> = std::env::args_os().skip(1).collect();
+    if args.first().is_some_and(|arg| arg == "--gateway") {
+        return gateway::run(&args[1..]).await;
+    }
     let import_legacy = args.len() == 4 && args[3] == "--import-legacy";
     if args.len() != 3 && !import_legacy {
         bail!("Usage: axiom-daemon <port> <workspace> <private-state-directory> [--import-legacy]");
