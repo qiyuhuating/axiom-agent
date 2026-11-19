@@ -30,9 +30,9 @@ async function until(fn, timeout=15000) {
 async function fixture() {
   const dir=await mkdtemp(join(tmpdir(),"axiom-core-"));
   const workspace=join(dir,"workspace"), sessionDir=join(dir,"sessions"), config=join(dir,"config.json");
-  const runtimePort=await freePort();
+  const runtimePort=await freePort(),rustTerminalPort=await freePort();
   const env={...process.env,AXIOM_CONFIG:config,AXIOM_DESKTOP:"1",PI_CODING_AGENT_DIR:join(dir,"pi-agent")};
-  await writeFile(config,JSON.stringify({workspace,sessionDir,runtimePort,discoverContext:false}));
+  await writeFile(config,JSON.stringify({workspace,sessionDir,runtimePort,rustTerminalPort,discoverContext:false}));
   return {dir,workspace,sessionDir,config,runtimePort,env};
 }
 test("HTTP host: authenticated runtime, restart, extension confirmation and stale response", {timeout:90000}, async()=>{

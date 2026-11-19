@@ -13,13 +13,8 @@ node scripts/build-ui.mjs (Join-Path $stage 'public')
 if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
 Push-Location $stage
 try{npm ci --omit=dev --no-audit --no-fund;if($LASTEXITCODE -ne 0){throw 'Production dependency installation failed'}}finally{Pop-Location}
-# The pinned node-pty release ships prebuilds for multiple targets.
-# NSIS is x64-only here: retain native Win32 x64 runtime files; symbols
-# and non-target binaries are not required for execution.
-$ptyPrebuilds=Join-Path $stage 'node_modules/node-pty/prebuilds'
-if(-not (Test-Path (Join-Path $ptyPrebuilds 'win32-x64'))){throw 'Expected node-pty x64 prebuild unavailable'}
-Get-ChildItem $ptyPrebuilds -Directory | Where-Object Name -ne 'win32-x64' | Remove-Item -Recurse -Force
-Get-ChildItem (Join-Path $ptyPrebuilds 'win32-x64') -Recurse -File -Filter '*.pdb' | Remove-Item -Force
+if(Test-Path (Join-Path $stage 'node_modules/node-pty')){throw 'Legacy node-pty must not be included in the desktop payload'}
+Remove-Item -LiteralPath (Join-Path $stage 'src/terminal.mjs')
 # Node and the native npm CLI are required for Pi and its package installation.
 # Only the runtime is installed; no Electron or build-only node_modules.
 $v='24.16.0'

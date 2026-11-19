@@ -22,10 +22,10 @@ async function port(){
 async function launch(backend,fixture){
   const p=await port();
   const rustTerminalPort=backend==="rust-bridge"?await port():undefined;
-  await writeFile(fixture.config,JSON.stringify({workspace:fixture.workspace,sessionDir:fixture.dir,runtimePort:p,discoverContext:false,...(backend==="rust-bridge"?{terminalBackend:"rust",rustTerminalPort,rustTerminalBinary:daemon,importLegacyTerminalHistory:fixture.importLegacy===true}:{})}));
+  await writeFile(fixture.config,JSON.stringify({workspace:fixture.workspace,sessionDir:fixture.dir,runtimePort:p,discoverContext:false,...(backend==="rust-bridge"?{terminalBackend:fixture.legacyConfig?"node":"rust",rustTerminalPort,rustTerminalBinary:daemon,...(fixture.legacyConfig?{}:{importLegacyTerminalHistory:fixture.importLegacy===true})}:{terminalBackend:"node"})}));
   const child=backend==="rust"
     ? spawn(daemon,[String(p),fixture.workspace,fixture.dir,...(fixture.importLegacy?["--import-legacy"]:[])],{stdio:["ignore","pipe","pipe"],windowsHide:true})
-    : spawn(process.execPath,[join(runtimeRoot,"src/runtime.mjs")],{env:{...process.env,AXIOM_CONFIG:fixture.config,PI_CODING_AGENT_DIR:join(fixture.dir,"pi-agent")},stdio:["ignore","pipe","pipe"],windowsHide:true});
+    : spawn(process.execPath,[join(backend==="node"?resolve("."):runtimeRoot,"src/runtime.mjs")],{env:{...process.env,AXIOM_CONFIG:fixture.config,PI_CODING_AGENT_DIR:join(fixture.dir,"pi-agent")},stdio:["ignore","pipe","pipe"],windowsHide:true});
   const exited=once(child,"exit");
   let stderr="";
   child.stdout.resume();child.stderr.on("data",d=>{stderr+=d;});
@@ -123,9 +123,9 @@ test("workbench routes Rust terminal and preserves live session across host rest
   await writeFile(join(sessionDir,"runtime.token"),token);
   await writeFile(config,JSON.stringify({workspace,sessionDir,runtimePort,rustTerminalPort,terminalBackend:"rust",rustTerminalBinary:daemon,discoverContext:false}));
   let host;
-  async function startHost(expectMismatch=false){
+  async function startHost(expectMismatch=false,hostRoot=runtimeRoot){
     const gateway=process.env.AXIOM_TEST_GATEWAY;
-    const privateHost=join(runtimeRoot,"src/server.mjs");
+    const privateHost=join(hostRoot,"src/server.mjs");
     const child=spawn(gateway || process.execPath,gateway?["--gateway",process.execPath,privateHost]:[privateHost],{
       env:{...process.env,AXIOM_CONFIG:config,AXIOM_DESKTOP:"1",PI_CODING_AGENT_DIR:join(dir,"pi-agent")},
       stdio:["pipe","pipe","pipe"],windowsHide:true
@@ -174,7 +174,8 @@ test("workbench routes Rust terminal and preserves live session across host rest
     await host.stop();
     const savedConfig=await readFile(config,"utf8");
     await writeFile(config,JSON.stringify({...JSON.parse(savedConfig),terminalBackend:"node"}));
-    host=await startHost(true);
+    // Verify mismatch via source host: the packaged host intentionally maps node to rust.
+    host=await startHost(true,resolve("."));
     assert.equal((await directHealth(runtimePort)).pid,nodeHealth.pid);
     assert.equal((await directHealth(rustTerminalPort)).pid,rustHealth.pid);
     await host.stop();
@@ -216,7 +217,13 @@ test("offline legacy terminal history imports exactly once without modifying ori
     const records=JSON.parse(old);
     assert.equal(records.length,1);
     fixture.importLegacy=true;
+    // Installed builds upgrade an old Node configuration in memory, never rewrite it.
+    fixture.legacyConfig=runtimeRoot!==resolve(".");
     instance=await launch("rust-bridge",fixture);
+    if(fixture.legacyConfig){
+      assert.equal(JSON.parse(await readFile(fixture.config,"utf8")).terminalBackend,"node");
+      assert.equal((await (await instance.api("runtime-health")).json()).terminalBackend,"rust");
+    }
     const snapshot=await receive(instance,id,fixture.token,e=>e.snapshot===true);
     assert.equal(snapshot.data,records[0].buffer);
     assert.equal(snapshot.interrupted,true);

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { resolve, join, delimiter } from 'node:path';
+import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
 import { once } from 'node:events';
@@ -9,10 +10,14 @@ import { createInterface } from 'node:readline';
 
 const root=resolve('.desktop-runtime'),dir=await mkdtemp(join(tmpdir(),'axiom-desktop-'));
 const sessionDir=join(dir,'sessions'),workspace=join(dir,'workspace'),config=join(dir,'config.json');
+assert.equal(existsSync(join(root,"node_modules/node-pty")),false,"Legacy production native module");
+assert.equal(existsSync(join(root,"src/terminal.mjs")),false,"Legacy production implementation");
 const listener=createServer();listener.listen(0,'127.0.0.1');await once(listener,'listening');
 const runtimePort=listener.address().port;await new Promise(resolve=>listener.close(resolve));
+const rustListener=createServer();rustListener.listen(0,"127.0.0.1");await once(rustListener,"listening");
+const rustTerminalPort=rustListener.address().port;await new Promise(resolve=>rustListener.close(resolve));
 await mkdir(workspace);
-await writeFile(config,JSON.stringify({workspace,sessionDir,runtimePort,discoverContext:false}));
+await writeFile(config,JSON.stringify({workspace,sessionDir,runtimePort,rustTerminalPort,discoverContext:false}));
 const node=join(root,'bin','node.exe');
 const child=spawn(node,[join(root,'src','server.mjs')],{cwd:root,env:{...process.env,AXIOM_DESKTOP:'1',AXIOM_CONFIG:config,PI_CODING_AGENT_DIR:join(dir,'pi-agent'),PATH:join(root,'bin')+delimiter+process.env.PATH},stdio:['pipe','pipe','inherit'],windowsHide:true});
 const exited=once(child,'exit');
@@ -20,7 +25,7 @@ const lines=createInterface({input:child.stdout});
 let base, terminal;
 try{
  const port=await new Promise((resolve,reject)=>{
-  const timer=setTimeout(()=>reject(Error('Host readiness timeout')),20000);
+  const timer=setTimeout(()=>reject(Error('Host readiness timeout')),30000);
   lines.on('line',line=>{const m=/^AXIOM_READY (\d+)$/.exec(line);if(m){clearTimeout(timer);resolve(Number(m[1]));}});
   child.once('exit',code=>{clearTimeout(timer);reject(Error('Host exited: '+code));});
  });
@@ -30,7 +35,7 @@ try{
  for(const path of ['/','/app.js','/markdown.js','/dsh-ui.js','/workbench.js','/workbench.css'])await get(path);
  const health=await (await get('/api/health')).json();assert.equal(health.ok,true);
  const state=await(await get('/api/state')).json();assert.equal(state.workspace,workspace);
- const runtime=await(await get('/api/runtime-health')).json();assert.equal(runtime.ok,true);
+ const runtime=await(await get('/api/runtime-health')).json();assert.equal(runtime.ok,true);assert.equal(runtime.terminalBackend,"rust");
  terminal=await post('/api/terminal-action',{action:'create'});
  const ctrl=new AbortController();
  try{

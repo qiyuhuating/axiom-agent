@@ -72,7 +72,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let mut command = if settings
         .get("nativeGateway")
         .and_then(serde_json::Value::as_bool)
-        == Some(true)
+        != Some(false)
     {
         let mut command = Command::new(bin.join("axiom-daemon.exe"));
         command.arg("--gateway").arg(&node).arg(&server);
