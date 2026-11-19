@@ -1,6 +1,8 @@
 //! First migration slice: the native terminal HTTP contract.
 //! The existing Node runtime remains authoritative until parity gates pass.
 mod gateway;
+mod history;
+use history::History;
 mod process_tree;
 use anyhow::{bail, Context, Result};
 use axum::{
@@ -35,13 +37,12 @@ use std::{
 use tokio::sync::{broadcast, watch};
 use uuid::Uuid;
 
-const HISTORY_LIMIT: usize = 256 * 1024;
 const MAX_TERMINALS: usize = 8;
 
 #[derive(Clone, Serialize, Deserialize)]
 struct Record {
     id: String,
-    buffer: String,
+    buffer: History,
     exit: Option<u32>,
     #[serde(default)]
     interrupted: bool,
@@ -87,14 +88,7 @@ impl Terminal {
             return;
         }
         let mut record = self.record.lock().unwrap();
-        record.buffer.push_str(text);
-        if record.buffer.len() > HISTORY_LIMIT {
-            let mut start = record.buffer.len() - HISTORY_LIMIT;
-            while !record.buffer.is_char_boundary(start) {
-                start += 1;
-            }
-            record.buffer.drain(..start);
-        }
+        record.buffer.append(text);
         self.dirty.store(true, Ordering::Release);
         let _ = self.events.send(json!({"data":text}));
     }
@@ -258,7 +252,7 @@ impl Store {
         let terminal = Arc::new(Terminal::new(
             Record {
                 id: id.clone(),
-                buffer: String::new(),
+                buffer: History::default(),
                 exit: None,
                 interrupted: false,
             },
