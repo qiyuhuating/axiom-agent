@@ -53,7 +53,9 @@ export async function createRustTerminalBackend() {
         if (!existsSync(binary)) throw Error("Rust terminal binary not found: " + binary);
         const fd = openSync(resolve(config.sessionDir, "rust-terminal.log"), "a");
         try {
-          const child = spawn(binary, [String(port), config.workspace, config.sessionDir], {
+          const args = [String(port), config.workspace, config.sessionDir];
+          if (config.importLegacyTerminalHistory === true) args.push("--import-legacy");
+          const child = spawn(binary, args, {
             cwd: root,
             env: process.env,
             detached: true,

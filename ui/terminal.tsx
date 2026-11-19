@@ -35,12 +35,40 @@ export default function TerminalView() {
       },
       cursorBlink: true,
       allowProposedApi: false,
+      disableStdin: true,
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(node.current!);
+    // Preserve keystroke order across asynchronous HTTP requests. Never retry
+    // an ambiguous write; discard pending input on failure and surface it.
+    let pendingInput = "";
+    let writing = false;
+    let replaying = true;
+    let replayGeneration = 0;
+    let ended = false;
+    async function flushInput() {
+      if (writing || disposed || !termId) return;
+      writing = true;
+      try {
+        while (pendingInput && !disposed) {
+          let end = Math.min(pendingInput.length, 65536);
+          if (end < pendingInput.length && /[\uD800-\uDBFF]/.test(pendingInput[end - 1])) end--;
+          const data = pendingInput.slice(0, end);
+          pendingInput = pendingInput.slice(end);
+          await terminalAction("input", { id: termId, data });
+        }
+      } catch (e) {
+        pendingInput = "";
+        if (!disposed) setError(msg(e));
+      } finally {
+        writing = false;
+      }
+    }
     const input = term.onData((data) => {
-      if (termId) void terminalAction("input", { id: termId, data }).catch((e) => setError(msg(e)));
+      if (!termId || disposed || replaying || ended) return;
+      pendingInput += data;
+      void flushInput();
     });
     async function launch() {
       try {
@@ -57,18 +85,34 @@ export default function TerminalView() {
         eventSource.onmessage = ({ data }) => {
           const e = JSON.parse(data);
           if (e.snapshot) {
+            const generation = ++replayGeneration;
+            replaying = true;
+            ended = Boolean(e.interrupted) || typeof e.exit === "number";
+            term.options.disableStdin = true;
             term.reset();
             setInterrupted(Boolean(e.interrupted));
-            if (e.interrupted || typeof e.exit === "number") term.options.disableStdin = true;
+            setExit(typeof e.exit === "number" ? e.exit : null);
+            term.write(e.data || "", () => {
+              if (disposed || generation !== replayGeneration) return;
+              replaying = false;
+              term.options.disableStdin = ended;
+              if (!ended) resize();
+            });
+          } else if (e.data) {
+            term.write(e.data);
           }
-          if (e.data) term.write(e.data);
           if (typeof e.exit === "number") {
+            ended = true;
             setExit(e.exit);
             term.options.disableStdin = true;
           }
           if (e.closed) eventSource?.close();
         };
-        eventSource.onerror = () => setError("终端连接中断");
+        eventSource.onerror = () => {
+          replaying = true;
+          term.options.disableStdin = true;
+          setError("终端连接中断");
+        };
         const resize = () => {
           if (
             !term.options.disableStdin &&

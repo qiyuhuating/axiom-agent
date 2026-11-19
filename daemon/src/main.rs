@@ -96,8 +96,8 @@ impl Terminal {
     }
 
     fn stop(&self, interrupted: bool) {
-        let mut live = self.live.lock().unwrap();
-        if let Some(mut handles) = live.take() {
+        let handles = self.live.lock().unwrap().take();
+        if let Some(mut handles) = handles {
             if interrupted {
                 self.record.lock().unwrap().interrupted = true;
                 self.dirty.store(true, Ordering::Release);
@@ -117,7 +117,7 @@ impl Terminal {
 }
 
 impl Store {
-    fn open(workspace: PathBuf, archive: PathBuf) -> Result<Self> {
+    fn open(workspace: PathBuf, archive: PathBuf, import_legacy: bool) -> Result<Self> {
         fs::create_dir_all(&workspace)?;
         let lock = OpenOptions::new()
             .create(true)
@@ -129,10 +129,32 @@ impl Store {
             .context("Terminal state is already owned by another daemon")?;
         let dirty = Arc::new(AtomicBool::new(false));
         let mut terminals = BTreeMap::new();
-        match fs::read(&archive) {
+        // The Rust archive always takes precedence, even if it is empty.
+        // Import is explicit and never mutates the legacy archive.
+        let source = match fs::read(&archive) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound && import_legacy => {
+                let path = archive.with_file_name("terminals.json");
+                match fs::read(path) {
+                    Ok(bytes) => {
+                        dirty.store(true, Ordering::Release);
+                        Ok(bytes)
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                        dirty.store(true, Ordering::Release);
+                        Ok(b"[]".to_vec())
+                    }
+                    Err(e) => Err(e),
+                }
+            }
+            other => other,
+        };
+        match source {
             Ok(bytes) => {
                 let records: Vec<Record> = serde_json::from_slice(&bytes)?;
                 for mut record in records {
+                    if Uuid::parse_str(&record.id).is_err() || terminals.contains_key(&record.id) {
+                        bail!("Invalid or duplicate terminal id in archive");
+                    }
                     if record.exit.is_none() {
                         record.interrupted = true;
                         dirty.store(true, Ordering::Release);
@@ -146,7 +168,7 @@ impl Store {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => return Err(error.into()),
         }
-        Ok(Self {
+        let store = Self {
             terminals: Mutex::new(terminals),
             workspace,
             archive,
@@ -154,7 +176,11 @@ impl Store {
             persist_lock: Mutex::new(()),
             stopping: AtomicBool::new(false),
             _lock: lock,
-        })
+        };
+        if import_legacy {
+            store.persist()?;
+        }
+        Ok(store)
     }
 
     fn persist(&self) -> Result<()> {
@@ -322,12 +348,34 @@ impl Store {
 fn read_output(mut reader: Box<dyn Read + Send>, terminal: Arc<Terminal>) {
     let mut block = [0u8; 8192];
     let mut pending = Vec::new();
+    // portable-pty requests cursor inheritance on Windows. Our new terminal
+    // always begins at row 1, column 1, so answer only this initial query on
+    // the wire instead of persisting it into the replay log.
+    let mut initial_cursor = cfg!(windows);
+    const QUERY: &[u8] = b"\x1b[6n";
     loop {
         let n = match reader.read(&mut block) {
             Ok(0) | Err(_) => break,
             Ok(n) => n,
         };
         pending.extend_from_slice(&block[..n]);
+        if initial_cursor {
+            if pending.len() < QUERY.len() && QUERY.starts_with(&pending) {
+                continue;
+            }
+            initial_cursor = false;
+            if pending.starts_with(QUERY) {
+                let answered = terminal
+                    .live
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .is_some_and(|h| h.input.try_send(b"\x1b[1;1R".to_vec()).is_ok());
+                if answered {
+                    pending.drain(..QUERY.len());
+                }
+            }
+        }
         // Preserve an incomplete UTF-8 code point across transport reads.
         loop {
             match std::str::from_utf8(&pending) {
@@ -492,8 +540,9 @@ async fn events(State(app): State<App>, Query(query): Query<TerminalQuery>) -> R
 async fn main() -> Result<()> {
     // Explicit standalone test/preview entry. Do not share a live Node archive.
     let args: Vec<_> = std::env::args_os().skip(1).collect();
-    if args.len() != 3 {
-        bail!("Usage: axiom-daemon <port> <workspace> <private-state-directory>");
+    let import_legacy = args.len() == 4 && args[3] == "--import-legacy";
+    if args.len() != 3 && !import_legacy {
+        bail!("Usage: axiom-daemon <port> <workspace> <private-state-directory> [--import-legacy]");
     }
     let port: u16 = args[0].to_str().context("port")?.parse()?;
     let dir = Path::new(&args[2]);
@@ -509,6 +558,7 @@ async fn main() -> Result<()> {
     let store = Arc::new(Store::open(
         PathBuf::from(&args[1]),
         dir.join("rust-terminals.json"),
+        import_legacy,
     )?);
     let (shutdown, mut shutdown_rx) = watch::channel(false);
     let app = App {

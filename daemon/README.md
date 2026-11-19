@@ -34,13 +34,17 @@ Set AXIOM_CONFIG to that file before starting the host. Desktop staging bundles 
 - Loopback-only Axum terminal service validates exact Host and high-entropy Bearer token. The current Node host provisions the token file; a dedicated Rust lock prevents multiple daemons opening the same terminal archive.
 - portable-pty provides ConPTY, PowerShell 7, input, resize, SSE output, bounded history, explicit close and interrupted history recovery. Archive snapshots are atomically replaced only on changes.
 - Node and Rust direct endpoints, Node-to-Rust Cordis bridge and HTTP host restart all use the same contract tests with actual PTY processes. The browser/desktop UI protocol is unchanged; clients must answer normal terminal device-status queries.
-- The Rust archive is separate (rust-terminals.json), so this opt-in preview does not overwrite legacy terminal history. Existing Node sessions are not migrated or deleted.
+- The Rust archive is separate (rust-terminals.json). Stop the legacy runtime and verify that no process still owns the legacy session directory before setting importLegacyTerminalHistory to true. On first startup, the daemon imports the existing terminals.json under its exclusive archive lock, marks unfinished sessions interrupted, and writes the new archive atomically. The original file is preserved; an existing Rust archive always takes precedence, even when empty. Active processes are not transferred.
 
 ## Remaining gates before removing node-pty
 
-- Actual xterm/WebView end-to-end acceptance, including reconnect and UTF-8.
+- Repeat xterm/WebView end-to-end acceptance on the exact updated NSIS artifact. A local installed fixture using the updated UI and Rust executable passed keyboard ordering, UTF-8, page reload, reconnect, and terminal close. A reproducible manual driver is in scripts/check-installed-terminal.mjs.
 - Preserve Cordis plugin compatibility: the experimental terminal backend currently exposes asynchronous list/action/snapshot; older plugins can depend on the synchronous get() record and listener set. Do not switch such workspaces to the preview backend.
-- Explicit legacy history cutover and safe handling of active terminals; installer upgrade/rollback, Windows process-tree cleanup, owner-only token/lock-file provisioning, and final packaging parity.
+- Offline legacy history import is tested; automatic cutover, active process migration, installer upgrade/rollback, Windows process-tree cleanup, and owner-only token/lock-file provisioning remain pending.
 - Final Rust gateway ownership (all existing host routes) is not yet implemented. Keep the Node runtime and all existing packages until the corresponding parity gate passes.
 
 Phase 2 will migrate sandboxing, DAG, Cron and team state only after phase 1 acceptance; phase 3 will migrate Pi RPC lifecycle/idle eviction. No inference engine rewrite.
+
+## Installed window smoke test
+
+Use an isolated desktop configuration and a fresh terminal archive. Launch the app from a test-only PowerShell environment with WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS set to --remote-debugging-port=18764 --remote-debugging-address=127.0.0.1. Use a locally available Playwright module (not a production dependency); set AXIOM_TEST_PLAYWRIGHT_MODULE to its absolute module path, then run node scripts/check-installed-terminal.mjs 18764 http://127.0.0.1:<host-port>. The script creates and closes a real PTY and exercises keyboard input, UTF-8 and reload/reconnect. Remove the debugging environment variable after the test. Do not enable remote debugging for a production session.

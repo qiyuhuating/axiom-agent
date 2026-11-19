@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { once } from "node:events";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { request } from "node:http";
 import { createInterface } from "node:readline";
 import { createServer } from "node:net";
@@ -22,9 +22,9 @@ async function port(){
 async function launch(backend,fixture){
   const p=await port();
   const rustTerminalPort=backend==="rust-bridge"?await port():undefined;
-  await writeFile(fixture.config,JSON.stringify({workspace:fixture.workspace,sessionDir:fixture.dir,runtimePort:p,discoverContext:false,...(backend==="rust-bridge"?{terminalBackend:"rust",rustTerminalPort,rustTerminalBinary:daemon}:{})}));
+  await writeFile(fixture.config,JSON.stringify({workspace:fixture.workspace,sessionDir:fixture.dir,runtimePort:p,discoverContext:false,...(backend==="rust-bridge"?{terminalBackend:"rust",rustTerminalPort,rustTerminalBinary:daemon,importLegacyTerminalHistory:fixture.importLegacy===true}:{})}));
   const child=backend==="rust"
-    ? spawn(daemon,[String(p),fixture.workspace,fixture.dir],{stdio:["ignore","pipe","pipe"],windowsHide:true})
+    ? spawn(daemon,[String(p),fixture.workspace,fixture.dir,...(fixture.importLegacy?["--import-legacy"]:[])],{stdio:["ignore","pipe","pipe"],windowsHide:true})
     : spawn(process.execPath,[join(runtimeRoot,"src/runtime.mjs")],{env:{...process.env,AXIOM_CONFIG:fixture.config,PI_CODING_AGENT_DIR:join(fixture.dir,"pi-agent")},stdio:["ignore","pipe","pipe"],windowsHide:true});
   const exited=once(child,"exit");
   let stderr="";
@@ -101,6 +101,7 @@ for(const backend of ["node","rust","rust-bridge"]){
       });
       const snapshot=await receive(instance,id,fixture.token,e=>e.snapshot===true);
       assert.ok(snapshot.data.includes(marker));assert.equal(snapshot.exit,null);
+      if(backend!=="node")assert.ok(!snapshot.data.startsWith("\x1b[6n"),"Initial ConPTY cursor query must not enter replay history");
       assert.equal((await (await instance.api("terminals")).json()).filter(t=>t.id===id).length,1);
       await instance.stop();instance=await launch(backend,fixture);
       const recovered=await receive(instance,id,fixture.token,e=>e.snapshot===true);
@@ -184,4 +185,35 @@ test("workbench routes Rust terminal and preserves live session across host rest
     }catch{}
     try{await host?.stop();}finally{await rm(dir,{recursive:true,force:true,maxRetries:8,retryDelay:200});}
   }
+});
+test("offline legacy terminal history imports exactly once without modifying original", {timeout:90000}, async()=>{
+  const dir=await mkdtemp(join(tmpdir(),"axiom-pty-migrate-"));
+  const fixture={dir,workspace:join(dir,"workspace"),config:join(dir,"config.json"),token:randomBytes(32).toString("hex")};
+  await mkdir(fixture.workspace);
+  await writeFile(join(dir,"runtime.token"),fixture.token);
+  let instance;
+  try{
+    instance=await launch("node",fixture);
+    const created=await instance.api("terminal-action",{action:"create"});
+    assert.ok(created.ok,await created.clone().text());
+    const {id}=await created.json();
+    await receive(instance,id,fixture.token,(_e,output)=>/PS [^\r\n]*>/.test(output),undefined,true);
+    await receive(instance,id,fixture.token,(_e,output)=>output.includes("AXIOM_LEGACY_HISTORY"),async()=>{
+      assert.ok((await instance.api("terminal-action",{action:"input",value:{id,data:"Write-Output ('AXIOM_'+'LEGACY_HISTORY')\r"}})).ok);
+    });
+    await instance.stop();instance=undefined;
+    const old=await readFile(join(dir,"terminals.json"));
+    const records=JSON.parse(old);
+    assert.equal(records.length,1);
+    fixture.importLegacy=true;
+    instance=await launch("rust-bridge",fixture);
+    const snapshot=await receive(instance,id,fixture.token,e=>e.snapshot===true);
+    assert.equal(snapshot.data,records[0].buffer);
+    assert.equal(snapshot.interrupted,true);
+    assert.ok((await instance.api("terminal-action",{action:"close",value:{id}})).ok);
+    await instance.stop();instance=undefined;
+    instance=await launch("rust-bridge",fixture);
+    assert.deepEqual(await (await instance.api("terminals")).json(),[]);
+    assert.deepEqual(await readFile(join(dir,"terminals.json")),old);
+  }finally{try{await instance?.stop();}finally{await rm(dir,{recursive:true,force:true,maxRetries:8,retryDelay:200});}}
 });
