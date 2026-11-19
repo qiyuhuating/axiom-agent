@@ -40,4 +40,8 @@ $bin=Join-Path $stage 'bin'
 New-Item -ItemType Directory -Force $bin,(Join-Path $bin 'node_modules')|Out-Null
 foreach($path in 'node.exe','npm.cmd','npx.cmd','LICENSE'){Copy-Item -LiteralPath (Join-Path $unpack $path) -Destination $bin}
 Copy-Item -LiteralPath (Join-Path $unpack 'node_modules/npm') -Destination (Join-Path $bin 'node_modules/npm') -Recurse -Force
+# During the staged migration, ship the Rust PTY sidecar alongside the legacy implementation.
+cargo build --release --locked --manifest-path (Join-Path $root 'daemon/Cargo.toml') --target-dir (Join-Path $root 'daemon/target')
+if($LASTEXITCODE -ne 0){throw 'Rust daemon build failed'}
+Copy-Item -LiteralPath (Join-Path $root 'daemon/target/release/axiom-daemon.exe') -Destination $bin
 Write-Output ('Runtime payload: '+[Math]::Round((Get-ChildItem $stage -File -Recurse|Measure-Object Length -Sum).Sum/1MB,2)+' MiB (uncompressed)')

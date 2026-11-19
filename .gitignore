@@ -29,3 +29,4 @@ public/markdown.js
 .desktop-cache/
 src-tauri/target/
 src-tauri/gen/
+daemon/target/
