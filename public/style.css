@@ -68,11 +68,11 @@ header{display:flex;align-items:center;justify-content:space-between;gap:8px;pad
 main:has(.welcome) header{border-color:transparent;}
 main:has(.welcome) #transcript{flex:1 1 0;display:flex;align-items:end;justify-content:center;padding-bottom:12px;}
 .welcome{text-align:center;}
-.welcome h1{margin:0 0 8px;font-size:26px;line-height:32px;font-weight:500;letter-spacing:-.02em;}
+.welcome h1{margin:0 0 8px;}
 .welcome p{margin:0;color:var(--muted);font-size:13px;}
 .composer{flex:none;padding:0 max(16px,calc((100% - 764px)/2)) 8px;min-width:0;}
 main:has(.welcome) .composer{flex:1 1 0;}
-.composer form{display:flex;flex-direction:column;gap:12px;padding:8px 12px 10px;border:.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-panel);background:var(--dsw-specific-input-major);box-shadow:var(--dsw-elevation-soft);}
+.composer form{--dsh-composer-card-max-width:764px;--dsh-content-font-size:14px;padding:8px 12px 10px;}
 .composer textarea{display:block;width:100%;min-height:76px;max-height:220px;resize:vertical;background:transparent;border:0;padding:6px 6px 0;line-height:24px;outline:none;}
 .composer textarea::placeholder{color:var(--dsw-alias-label-tertiary);}
 .actions{display:flex;flex-wrap:wrap;gap:4px;align-items:center;}
@@ -173,3 +173,7 @@ body.sidebar-collapsed #sidebar-settings span,body.sidebar-collapsed #sidebar-pa
 .settings-sections{display:flex;flex-wrap:wrap;gap:4px;padding:8px 12px;border-bottom:.5px solid var(--border);}
 .settings-section{padding:12px;min-width:0;}
 .settings-section[hidden]{display:none;}
+
+.composer form{position:relative;}
+#composer-menu{position:absolute;inset:0;pointer-events:none;}
+#composer-menu>div{pointer-events:auto;}

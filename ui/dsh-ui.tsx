@@ -12,8 +12,14 @@ import {
   SunMoon,
   Trash2,
 } from "lucide-react";
+
+export { initComposerMenu } from "./composer-menu.tsx";
+export { clearUserText, drawUserText, maskCredentials } from "./secret-view.tsx";
+
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
+import heroCss from "../vendor/dsh/conversation/HeroShell.module.css";
+import inputCss from "../vendor/dsh/conversation/InputBar.module.css";
 import {
   computeColumns,
   RIGHTBAR_DEFAULT_RATIO,
@@ -27,6 +33,7 @@ import rowsCss from "../vendor/dsh/sidebar/Rows.module.css";
 import settingsCss from "../vendor/dsh/sidebar/SettingsRoot.module.css";
 import sidebarCss from "../vendor/dsh/sidebar/SidebarRoot.module.css";
 import workspaceCss from "../vendor/dsh/sidebar/WorkspaceBrowser.module.css";
+import { maskCredentials } from "./credential-mask.ts";
 import "../vendor/dsh/theme/base.css";
 import "../vendor/dsh/theme/design-platform.css";
 import "../vendor/dsh/theme/scrollbar.css";
@@ -46,7 +53,7 @@ function SessionList({ sessions, current, disabled, onSelect, onDelete }: Props)
   const [target, setTarget] = useState<Session | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [failure, setFailure] = useState("");
-  const title = (s: Session) => s.name || s.firstMessage || "未命名会话";
+  const title = (s: Session) => maskCredentials(s.name || s.firstMessage || "未命名会话");
   async function confirm() {
     if (!target || deleting) return;
     setDeleting(true);
@@ -256,7 +263,12 @@ export function toggleWorkbench() {
   workbenchOpen = !workbenchOpen;
   layout();
 }
+export function styleWelcome() {
+  document.querySelector(".welcome h1")?.classList.add(heroCss.headline);
+}
 export function initAppearance() {
+  document.getElementById("form")?.classList.add(inputCss.card);
+  styleWelcome();
   const sidebar = document.querySelector(".sidebar");
   sidebar?.classList.add(sidebarCss.root);
   sidebar?.querySelector(".brand")?.classList.add(sidebarCss.logoRow);
