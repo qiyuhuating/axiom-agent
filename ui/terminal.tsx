@@ -1,6 +1,7 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import React, { useEffect, useRef, useState } from "react";
+import terminalCss from "../vendor/dsh/sidebar/terminal.module.css";
 import { api, errorBox, Header, msg, terminalAction } from "./panel-shared.tsx";
 
 function terminalTheme() {
@@ -159,7 +160,7 @@ export default function TerminalView() {
     };
   }, [selected]);
   return (
-    <div className="wb-panel">
+    <div className={"wb-panel " + terminalCss.root}>
       <Header>
         <strong>PowerShell 7</strong>
         <button
@@ -202,7 +203,7 @@ export default function TerminalView() {
           ))}
         </div>
       )}
-      <div ref={node} className="wb-terminal" />
+      <div ref={node} className={"wb-terminal " + terminalCss.screen} />
     </div>
   );
 }

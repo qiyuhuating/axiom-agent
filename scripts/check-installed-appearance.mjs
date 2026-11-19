@@ -24,7 +24,32 @@ try{
  await page.locator("#theme-toggle").click();assert.ok((await theme()).bg!=="rgb(255, 255, 255)");await capture(page,"dark.png");
  if(await page.locator("#sidebar-toggle").isVisible()){await page.locator("#sidebar-toggle").click();assert.equal(await page.locator(".sidebar").evaluate(e=>e.offsetWidth),56);await page.locator("#sidebar-open").click();}
  await page.locator("#theme-toggle").click();
- await page.locator("#show-workbench").click();await page.getByTitle("终端",{exact:true}).waitFor();await capture(page,"workbench.png");
+ await page.locator("#show-workbench").click();await page.locator(".inspector").getByTitle("终端",{exact:true}).waitFor();await capture(page,"workbench.png");
  await page.locator("#show-workbench").click();
+ await page.locator('#sidebar-panels').getByRole('button',{name:'文件',exact:true}).click();
+ await page.getByTitle('刷新文件',{exact:true}).waitFor();
+ await capture(page,'files.png');
+ await page.locator('#sidebar-panels').getByRole('button',{name:'浏览器',exact:true}).click();
+ await page.getByRole('textbox',{name:'浏览器地址'}).waitFor();
+ await capture(page,'browser.png');
+ await page.locator('#sidebar-panels').getByRole('button',{name:'Git Diff',exact:true}).click();
+ await page.locator('.inspector').locator('.wb-panel strong').filter({hasText:/^Git /}).waitFor();
+ await capture(page,'diff.png');
+ await page.locator('#sidebar-settings').click();
+ await page.getByRole('button',{name:'模型提供商',exact:true}).click();
+ await page.getByPlaceholder('https://api.example.com/v1').waitFor();
+ await capture(page,'settings.png');
+ await page.getByRole('button',{name:'通用与权限',exact:true}).click();
+ await page.getByLabel('权限模式').waitFor();
+ await page.locator('#sidebar-panels').getByRole('button',{name:'任务与计划',exact:true}).click();
+ await page.getByLabel('DAG 节点').waitFor();
+ await capture(page,'jobs.png');
+ await page.locator('#sidebar-panels').getByRole('button',{name:'Skills / MCP',exact:true}).click();
+ await page.getByLabel('MCP URL').waitFor();
+ await capture(page,'resources.png');
+ await page.getByRole('button',{name:'搜索会话',exact:true}).click();
+ await page.getByRole('textbox',{name:'搜索会话'}).fill('no-match-axiom');
+ await page.getByRole('textbox',{name:'搜索会话'}).press('Escape');
+ await page.locator('#show-workbench').click();
  assert.deepEqual(errors,[]);console.log("HARNESS_UI_RENDER_PASS",JSON.stringify(a));
 }finally{await browser.close();}

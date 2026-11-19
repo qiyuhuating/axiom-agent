@@ -28,18 +28,18 @@ button {cursor:pointer;}
 button:hover:not(:disabled),select:hover:not(:disabled){background:var(--hover);}
 button:disabled,select:disabled{opacity:.45;cursor:default;}
 button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--dsw-alias-border-selected);outline-offset:2px;}
-.sidebar {min-width:0;min-height:0;display:flex;flex-direction:column;padding:6px 8px;background:var(--panel);border-right:.5px solid var(--border);overflow:hidden;}
-.brand{display:flex;align-items:center;gap:8px;height:60px;padding:8px 4px 8px 8px;flex:none;}
+.sidebar {min-width:0;min-height:0;border-right:.5px solid var(--border);overflow:hidden;}
+
 .mark{display:grid;place-items:center;width:26px;height:26px;flex:none;background:var(--accent);color:var(--dsw-alias-label-primary-foreground);font-size:15px;border-radius:8px;font-weight:600;}
-.brand-name{font-size:18px;font-weight:500;white-space:nowrap;flex:1;}
+.brand-name{white-space:nowrap;flex:1;}
 #sidebar-toggle,#sidebar-open,#theme-toggle{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;flex:none;padding:0;border:0;color:var(--muted);}
 #sidebar-open{display:none;}
-#new{display:flex;align-items:center;justify-content:center;gap:6px;height:38px;margin:0 4px 6px;border-radius:var(--dsw-radius-md);padding:8px 12px;background:var(--dsw-alias-bg-module-platform);color:var(--ink);}
-.sidebar>label{padding:16px 12px 6px;color:var(--muted);font-size:12px;}
+
+
 #sessions{flex:1;min-height:0;overflow:auto;scrollbar-gutter:stable;}
-.session-row{display:flex;align-items:center;gap:2px;margin:2px 3px;border-radius:var(--dsw-radius-sm);min-width:0;}
+.session-row{min-width:0;}
 .session-row:hover,.session-row.active{background:var(--hover);}
-#sessions .session-select{display:flex;flex:1;min-width:0;height:34px;padding:0 9px;justify-content:flex-start;color:var(--ink);}
+#sessions .session-select{display:flex;flex:1;min-width:0;height:32px;padding:0;justify-content:flex-start;color:var(--ink);}
 #sessions .session-select span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 #sessions .session-delete{flex:none;width:28px;padding:0;justify-content:center;color:var(--muted);opacity:0;}
 .session-row:hover .session-delete,.session-row:focus-within .session-delete,.session-row.active .session-delete{opacity:1;}
@@ -49,7 +49,7 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid 
 body.sidebar-collapsed .brand-name,body.sidebar-collapsed .sidebar>label,body.sidebar-collapsed #sessions,body.sidebar-collapsed #new span,body.sidebar-collapsed #sidebar-toggle{display:none;}
 body.sidebar-collapsed .brand{padding:0;justify-content:center;}
 body.sidebar-collapsed #new{margin:0;padding:0;border:0;background:transparent;}
-body.sidebar-collapsed footer{margin-top:auto;justify-content:center;padding:0;font-size:0;}
+body.sidebar-collapsed footer{margin-top:auto;align-items:center;flex-direction:column;padding:0;font-size:0;}
 body.sidebar-collapsed #sidebar-open{display:inline-flex;}
 main{min-width:0;min-height:0;overflow:hidden;display:flex;flex-direction:column;background:var(--bg);}
 header{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 20px;min-height:50px;border-bottom:.5px solid var(--border);flex:none;}
@@ -158,3 +158,18 @@ body.workbench-overlay .inspector{position:fixed;right:0;top:50px;bottom:0;width
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;}}
 
 #send:focus-visible,#stop:focus-visible{outline-offset:3px;}
+
+/* Host-specific seats; upstream CSS modules own the page and control geometry. */
+#sidebar-panels{flex:none;min-height:0;max-height:40%;overflow:auto;}
+#new-session-row #new{gap:6px;}
+#sessions .axiom-workspace-list{max-height:none;min-height:0;}
+.session-search{flex:1;min-width:0;height:28px;border:.5px solid var(--border);border-radius:8px;padding:0 8px;background:var(--bg);}
+#sidebar-settings{flex:1;min-width:0;}
+body.sidebar-collapsed #sidebar-settings{flex:none;}
+body.sidebar-collapsed #sidebar-settings span,body.sidebar-collapsed #sidebar-panels button>span:last-child{display:none;}
+.file-page-title{flex:1;min-width:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+#sessions .session-select:hover{background:transparent;}
+.wb-terminal{--terminal-cursor:var(--ink);--terminal-cursor-accent:var(--bg);}
+.settings-sections{display:flex;flex-wrap:wrap;gap:4px;padding:8px 12px;border-bottom:.5px solid var(--border);}
+.settings-section{padding:12px;min-width:0;}
+.settings-section[hidden]{display:none;}

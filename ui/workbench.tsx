@@ -6,6 +6,8 @@ const Editor = React.lazy(() => import("./editor.tsx"));
 const TerminalView = React.lazy(() => import("./terminal.tsx"));
 
 import {
+  ArrowLeft,
+  ArrowRight,
   Check,
   ExternalLink,
   File,
@@ -39,6 +41,10 @@ import "../vendor/dsh/primitives/DiffBlock.module.css";
 import "../vendor/dsh/primitives/CodeCard.module.css";
 import guideCss from "../vendor/dsh/guide/GuideBody.module.css";
 import { CompassGlyph } from "../vendor/dsh/guide/GuideTitle.tsx";
+import browserCss from "../vendor/dsh/sidebar/Browser.module.css";
+import filesCss from "../vendor/dsh/sidebar/FilesBody.module.css";
+import settingsCss from "../vendor/dsh/sidebar/SettingsRoot.module.css";
+import sidebarCss from "../vendor/dsh/sidebar/SidebarRoot.module.css";
 
 const jobAction = (action: string, value: unknown) => api("job-action", { action, value });
 const icons = {
@@ -138,46 +144,54 @@ function Files() {
     void load("");
   }, [load]);
   return (
-    <div className="wb-panel">
-      <Header>
-        <strong>工作区文件</strong>
-        <Button
-          size="sm"
-          icon={<RefreshCw size={15} />}
+    <div className={"wb-panel " + filesCss.page}>
+      <div className={filesCss.header}>
+        <strong className="file-page-title">工作区文件</strong>
+        <button
+          type="button"
+          className={filesCss.tool}
+          title="刷新文件"
+          aria-label="刷新文件"
           onClick={() => {
             void load("");
             for (const dir of expanded) void load(dir);
           }}
         >
-          刷新
-        </Button>
-      </Header>
-      <div className="wb-scroll">
-        <FileTree
-          root=""
-          entries={Object.values(levels).flat()}
-          expanded={expanded}
-          current={current}
-          directories={loading}
-          t={(key) =>
-            ({
-              loading: "加载中…",
-              empty: "空目录",
-              emptyHidden: "没有可见文件",
-              truncated: "部分结果",
-              "entry.noViewer": "无可用预览",
-              "entry.other": "不支持打开",
-            })[key] || key
-          }
-          onToggle={(entry, next) => {
-            setExpanded((xs) => (next ? [...xs, entry.path] : xs.filter((x) => x !== entry.path)));
-            if (next) void load(entry.path);
-          }}
-          onOpen={(entry) => {
-            setCurrent(entry.path);
-            open("editor", entry.name, entry.path);
-          }}
-        />
+          <RefreshCw size={15} />
+        </button>
+      </div>
+      <div className={filesCss.content}>
+        <div className={filesCss.navigator + " " + filesCss.wholePage}>
+          <div className={filesCss.body}>
+            <FileTree
+              root=""
+              entries={Object.values(levels).flat()}
+              expanded={expanded}
+              current={current}
+              directories={loading}
+              t={(key) =>
+                ({
+                  loading: "加载中…",
+                  empty: "空目录",
+                  emptyHidden: "没有可见文件",
+                  truncated: "部分结果",
+                  "entry.noViewer": "无可用预览",
+                  "entry.other": "不支持打开",
+                })[key] || key
+              }
+              onToggle={(entry, next) => {
+                setExpanded((xs) =>
+                  next ? [...xs, entry.path] : xs.filter((x) => x !== entry.path),
+                );
+                if (next) void load(entry.path);
+              }}
+              onOpen={(entry) => {
+                setCurrent(entry.path);
+                open("editor", entry.name, entry.path);
+              }}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -258,29 +272,51 @@ function BrowserView() {
     setInput(history[n]);
   }
   return (
-    <div className="wb-panel">
+    <div className={"wb-panel " + browserCss.root}>
       <form
-        className="wb-bar"
+        className={browserCss.toolbar}
         onSubmit={(e) => {
           e.preventDefault();
           go();
         }}
       >
-        <Button size="sm" disabled={index <= 0} onClick={() => move(index - 1)}>
-          ‹
-        </Button>
-        <Button size="sm" disabled={index >= history.length - 1} onClick={() => move(index + 1)}>
-          ›
-        </Button>
-        <input
-          aria-label="浏览器地址"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="https://…"
-        />
-        <Button size="sm" type="submit">
-          前往
-        </Button>
+        <button
+          type="button"
+          className={browserCss.tool}
+          title="后退"
+          aria-label="后退"
+          disabled={index <= 0}
+          onClick={() => move(index - 1)}
+        >
+          <ArrowLeft size={16} />
+        </button>
+        <button
+          type="button"
+          className={browserCss.tool}
+          title="前进"
+          aria-label="前进"
+          disabled={index >= history.length - 1}
+          onClick={() => move(index + 1)}
+        >
+          <ArrowRight size={16} />
+        </button>
+        <div className={browserCss.addressBox}>
+          <input
+            className={browserCss.address}
+            aria-label="浏览器地址"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="输入网址"
+          />
+          <button
+            className={browserCss.tool + " " + browserCss.addressGo}
+            type="submit"
+            title="前往"
+            aria-label="前往"
+          >
+            <ArrowRight size={16} />
+          </button>
+        </div>
         {url && (
           <a title="在外部浏览器打开" target="_blank" rel="noopener noreferrer" href={url}>
             <ExternalLink size={16} />
@@ -291,13 +327,13 @@ function BrowserView() {
       {url ? (
         <iframe
           title="浏览器"
-          className="wb-frame"
+          className={browserCss.frame}
           sandbox="allow-scripts allow-forms allow-popups"
           referrerPolicy="no-referrer"
           src={url}
         />
       ) : (
-        <p className="wb-muted">打开 HTTP(S) 页面。禁止内嵌的网站可在外部打开。</p>
+        <p className={browserCss.start}>打开 HTTP(S) 页面。禁止内嵌的网站可在外部打开。</p>
       )}
     </div>
   );
@@ -433,6 +469,7 @@ function SettingsView() {
     models = useLoad("models", []),
     levels = useLoad("levels", []),
     state = useLoad("state", null);
+  const [section, setSection] = useState<"general" | "models">("general");
   async function update(action: string, value: unknown) {
     try {
       await api("action", { action, value });
@@ -459,67 +496,86 @@ function SettingsView() {
           刷新
         </Button>
       </Header>
-      <div className="wb-scroll wb-form">
-        {errorBox(error || models.error || state.error)}
-        <label>
-          模型
-          <select
-            aria-label="设置模型"
-            value={state.value?.model ? JSON.stringify(state.value.model) : ""}
-            onChange={(e) => void update("model", JSON.parse(e.target.value))}
+      <nav className="settings-sections" aria-label="设置分类">
+        {(["general", "models"] as const).map((key) => (
+          <button
+            type="button"
+            key={key}
+            className={settingsCss.navCell + (key === section ? " " + settingsCss.active : "")}
+            aria-pressed={key === section}
+            onClick={() => setSection(key)}
           >
-            <option value="" disabled>
-              选择模型
-            </option>
-            {models.value.map((m: any) => (
-              <option
-                key={m.provider + m.id}
-                value={JSON.stringify({ provider: m.provider, id: m.id })}
-              >
-                {m.provider} / {m.id}
+            {key === "general" ? "通用与权限" : "模型提供商"}
+          </button>
+        ))}
+      </nav>
+      <div className="wb-scroll">
+        <div className="wb-form settings-section" hidden={section !== "general"}>
+          {errorBox(error || models.error || state.error)}
+          <label>
+            模型
+            <select
+              aria-label="设置模型"
+              value={state.value?.model ? JSON.stringify(state.value.model) : ""}
+              onChange={(e) => void update("model", JSON.parse(e.target.value))}
+            >
+              <option value="" disabled>
+                选择模型
               </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          推理强度
-          <select
-            value={state.value?.thinkingLevel || ""}
-            onChange={(e) => void update("thinking", e.target.value)}
-          >
-            {levels.value.map((l: string) => (
-              <option key={l}>{l}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Agent 权限
-          <select
-            aria-label="权限模式"
-            value={value?.permission || "full"}
-            onChange={(e) => void mode(e.target.value)}
-          >
-            <option value="full">完全信任（现有行为）</option>
-            <option value="ask">非只读工具逐次审批</option>
-            <option value="read-only">只读工具</option>
-          </select>
-        </label>
-        <p className="wb-muted">
-          这是 Pi 工具调用策略，不是操作系统沙箱。用户自行打开的终端不受 Agent 工具审批约束。
-        </p>
-        <Providers />
-        <div className="wb-readonly">
-          工作区<code>{value?.workspace}</code>
+              {models.value.map((m: any) => (
+                <option
+                  key={m.provider + m.id}
+                  value={JSON.stringify({ provider: m.provider, id: m.id })}
+                >
+                  {m.provider} / {m.id}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            推理强度
+            <select
+              value={state.value?.thinkingLevel || ""}
+              onChange={(e) => void update("thinking", e.target.value)}
+            >
+              {levels.value.map((l: string) => (
+                <option key={l}>{l}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Agent 权限
+            <select
+              aria-label="权限模式"
+              value={value?.permission || "full"}
+              onChange={(e) => void mode(e.target.value)}
+            >
+              <option value="full">完全信任（现有行为）</option>
+              <option value="ask">非只读工具逐次审批</option>
+              <option value="read-only">只读工具</option>
+            </select>
+          </label>
+          <p className="wb-muted">
+            这是 Pi 工具调用策略，不是操作系统沙箱。用户自行打开的终端不受 Agent 工具审批约束。
+          </p>
         </div>
-        <div className="wb-readonly">
-          输出额度<code>{value?.maxOutputTokens ?? "模型默认"}</code>
+        <div className="wb-form settings-section" hidden={section !== "models"}>
+          <Providers />
         </div>
-        <div className="wb-readonly">
-          项目上下文发现<code>{value?.discoverContext ? "开启" : "关闭"}</code>
+        <div className="wb-form settings-section" hidden={section !== "general"}>
+          <div className="wb-readonly">
+            工作区<code>{value?.workspace}</code>
+          </div>
+          <div className="wb-readonly">
+            输出额度<code>{value?.maxOutputTokens ?? "模型默认"}</code>
+          </div>
+          <div className="wb-readonly">
+            项目上下文发现<code>{value?.discoverContext ? "开启" : "关闭"}</code>
+          </div>
+          <p className="wb-muted">
+            工作区及输出预算仍由 axiom.config.json 控制，修改后重启。提供商凭证由 Pi 原生配置管理。
+          </p>
         </div>
-        <p className="wb-muted">
-          工作区及输出预算仍由 axiom.config.json 控制，修改后重启。提供商凭证由 Pi 原生配置管理。
-        </p>
       </div>
     </div>
   );
@@ -1038,6 +1094,34 @@ function renderTab(tab: any) {
       return <Guide />;
   }
 }
+function SidebarPanels() {
+  return (
+    <div className={sidebarCss.panelList + " axiom-panel-list"}>
+      {(["files", "terminal", "browser", "diff", "jobs", "resources"] as const).map((kind) => {
+        const Icon = icons[kind];
+        return (
+          <button
+            key={kind}
+            type="button"
+            className={sidebarCss.panelRow}
+            title={names[kind]}
+            aria-label={names[kind]}
+            onClick={() => {
+              if (!document.body.classList.contains("workbench-open")) toggleWorkbench();
+              open(kind);
+              document.body.classList.remove("sidebar-drawer");
+            }}
+          >
+            <span className={sidebarCss.panelGlyph}>
+              <Icon size={16} />
+            </span>
+            <span className={sidebarCss.panelTitle}>{names[kind]}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 function Workbench() {
   const snapshot = useSyncExternalStore(
       controller.subscribe,
@@ -1299,6 +1383,12 @@ export function clearAttachments() {
 }
 export function initWorkbench() {
   createRoot(document.getElementById("workbench")!).render(<Workbench />);
+  createRoot(document.getElementById("sidebar-panels")!).render(<SidebarPanels />);
+  document.getElementById("sidebar-settings")!.onclick = () => {
+    if (!document.body.classList.contains("workbench-open")) toggleWorkbench();
+    open("settings");
+    document.body.classList.remove("sidebar-drawer");
+  };
   const input = document.getElementById("attach-input") as HTMLInputElement;
   input.onchange = () => void selectFiles(input);
   document.getElementById("attach-button")!.onclick = () => input.click();

@@ -11,3 +11,9 @@ The complete upstream conversation and slot system is not copied: its session, p
 Windows WebView2 test fixture: light and dark appearance, sidebar collapse and expand, guide opening and closing, white base/rgb(249,250,251) sidebar, 28 px composer radius. Existing installed terminal smoke covers Unicode, page reload, reconnect and terminal close. Tested against a previously installed test-only executable with rebuilt UI assets, not an exact new NSIS artifact. Build and core tests pass; lint has warnings but no errors.
 
 Use scripts/check-installed-appearance.mjs with the same isolated CDP procedure as scripts/check-installed-terminal.mjs. Set AXIOM_TEST_PLAYWRIGHT_MODULE to a local Playwright module. Optional AXIOM_UI_SCREENSHOT_DIR stores actual screenshots locally. Never enable debugging on a production session.
+
+## Sidebar source alignment
+
+Seven additional original upstream CSS modules are used directly at the sidebar, workspace history, settings, files, browser and terminal render sites. The left navigation opens the existing Axiom workbench routes, includes a local title search over loaded Pi sessions and retains the settings entry in the rail. Settings uses the upstream navigation cells for general/permission and model-provider sections. Existing FileTree/DockKit remain upstream source. Jobs, resources and Git status keep their Axiom-specific data contracts and layouts; the browser remains a sandboxed iframe, not the upstream Electron browser surface.
+
+Installed-fixture appearance smoke exercises the navigation, title search, files, browser, settings, resources, jobs, and terminal reconnection without running inference or changing permissions. The latest exact NSIS artifact is still pending CI.

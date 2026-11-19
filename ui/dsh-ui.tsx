@@ -6,6 +6,8 @@ import {
   PanelRight,
   Paperclip,
   Plus,
+  Search,
+  Settings,
   Square,
   SunMoon,
   Trash2,
@@ -21,6 +23,10 @@ import {
 } from "../vendor/dsh/layout/columns.ts";
 import { Button } from "../vendor/dsh/primitives/Button.tsx";
 import { Modal } from "../vendor/dsh/primitives/Modal.tsx";
+import rowsCss from "../vendor/dsh/sidebar/Rows.module.css";
+import settingsCss from "../vendor/dsh/sidebar/SettingsRoot.module.css";
+import sidebarCss from "../vendor/dsh/sidebar/SidebarRoot.module.css";
+import workspaceCss from "../vendor/dsh/sidebar/WorkspaceBrowser.module.css";
 import "../vendor/dsh/theme/base.css";
 import "../vendor/dsh/theme/design-platform.css";
 import "../vendor/dsh/theme/scrollbar.css";
@@ -35,6 +41,8 @@ type Props = {
   onDelete: (id: string) => Promise<void>;
 };
 function SessionList({ sessions, current, disabled, onSelect, onDelete }: Props) {
+  const [query, setQuery] = useState("");
+  const [searching, setSearching] = useState(false);
   const [target, setTarget] = useState<Session | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [failure, setFailure] = useState("");
@@ -54,36 +62,82 @@ function SessionList({ sessions, current, disabled, onSelect, onDelete }: Props)
   }
   return (
     <>
-      <div className="session-list">
-        {sessions.length === 0 && <p className="empty-sessions">暂无历史会话</p>}
-        {sessions.map((s) => (
-          <div key={s.id} className={"session-row" + (s.id === current ? " active" : "")}>
-            <Button
-              variant="ghost"
-              className="session-select"
-              disabled={disabled || deleting}
-              aria-current={s.id === current ? "page" : undefined}
-              title={title(s)}
-              icon={<MessageSquare size={16} strokeWidth={1.7} />}
-              onClick={() => void onSelect(s.id)}
-            >
-              <span>{title(s)}</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="session-delete"
-              disabled={disabled || deleting}
-              aria-label={"删除会话：" + title(s)}
-              title="删除会话"
-              icon={<Trash2 size={16} strokeWidth={1.7} />}
-              onClick={() => {
-                setFailure("");
-                setTarget(s);
+      <div className={workspaceCss.root + " axiom-workspace-list"}>
+        <div className={workspaceCss.sectionHeader}>
+          {searching ? (
+            <input
+              className="session-search"
+              ref={(input) => {
+                if (input) input.focus();
+              }}
+              aria-label="搜索会话"
+              placeholder="搜索会话"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setQuery("");
+                  setSearching(false);
+                }
               }}
             />
-          </div>
-        ))}
+          ) : (
+            <span className={workspaceCss.sectionLabel}>会话历史</span>
+          )}
+          <button
+            type="button"
+            className={workspaceCss.iconButton}
+            title="搜索会话"
+            aria-label="搜索会话"
+            aria-expanded={searching}
+            onClick={() => {
+              setSearching(!searching);
+              setQuery("");
+            }}
+          >
+            <Search size={16} />
+          </button>
+        </div>
+        <div className={workspaceCss.list + " session-list"}>
+          {sessions.length === 0 && <p className="empty-sessions">暂无历史会话</p>}
+          {sessions
+            .filter((s) => title(s).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
+            .map((s) => (
+              <div
+                key={s.id}
+                className={
+                  rowsCss.sessionRow +
+                  " session-row" +
+                  (s.id === current ? " " + rowsCss.selected + " active" : "")
+                }
+              >
+                <Button
+                  variant="ghost"
+                  className="session-select"
+                  disabled={disabled || deleting}
+                  aria-current={s.id === current ? "page" : undefined}
+                  title={title(s)}
+                  icon={<MessageSquare size={16} strokeWidth={1.7} />}
+                  onClick={() => void onSelect(s.id)}
+                >
+                  <span className={rowsCss.title}>{title(s)}</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="session-delete"
+                  disabled={disabled || deleting}
+                  aria-label={"删除会话：" + title(s)}
+                  title="删除会话"
+                  icon={<Trash2 size={16} strokeWidth={1.7} />}
+                  onClick={() => {
+                    setFailure("");
+                    setTarget(s);
+                  }}
+                />
+              </div>
+            ))}
+        </div>
       </div>
       <Modal
         open={target !== null}
@@ -133,7 +187,16 @@ export function renderSessions(props: Props) {
 const iconRoots = new Map<string, ReturnType<typeof createRoot>>();
 export function controlIcon(
   id: string,
-  kind: "new" | "send" | "stop" | "trace" | "sidebar" | "workbench" | "theme" | "attach",
+  kind:
+    | "new"
+    | "send"
+    | "stop"
+    | "trace"
+    | "sidebar"
+    | "workbench"
+    | "theme"
+    | "attach"
+    | "settings",
   label: string,
 ) {
   const el = document.getElementById(id)!;
@@ -152,6 +215,7 @@ export function controlIcon(
     workbench: PanelRight,
     theme: SunMoon,
     attach: Paperclip,
+    settings: Settings,
   }[kind];
   root.render(
     <>
@@ -175,6 +239,10 @@ export function layout() {
   );
   if (!drawer) document.body.classList.remove("sidebar-drawer");
   document.body.classList.toggle("sidebar-collapsed", collapsed && !drawer);
+  document.querySelector(".sidebar")?.classList.toggle(sidebarCss.collapsed, collapsed && !drawer);
+  document
+    .getElementById("sidebar-settings")
+    ?.classList.toggle(settingsCss.rail, collapsed && !drawer);
   document.body.classList.toggle("workbench-open", workbenchOpen);
   document.body.classList.toggle(
     "workbench-overlay",
@@ -189,6 +257,14 @@ export function toggleWorkbench() {
   layout();
 }
 export function initAppearance() {
+  const sidebar = document.querySelector(".sidebar");
+  sidebar?.classList.add(sidebarCss.root);
+  sidebar?.querySelector(".brand")?.classList.add(sidebarCss.logoRow);
+  sidebar?.querySelector(".brand-name")?.classList.add(sidebarCss.brandName);
+  document.getElementById("new-session-row")?.classList.add(sidebarCss.newSessionRow);
+  document.getElementById("new")?.classList.add(sidebarCss.newSession);
+  document.getElementById("sidebar-toggle")?.classList.add(sidebarCss.iconButton);
+  document.getElementById("sidebar-settings")?.classList.add(settingsCss.trigger);
   const media = matchMedia("(prefers-color-scheme: dark)");
   const apply = () => {
     const mode = localStorage.getItem("axiom.appearance") || "system";
@@ -200,6 +276,7 @@ export function initAppearance() {
   };
   media.addEventListener("change", apply);
   apply();
+  controlIcon("sidebar-settings", "settings", "设置");
   controlIcon("theme-toggle", "theme", "");
   controlIcon("sidebar-toggle", "sidebar", "");
   controlIcon("sidebar-open", "sidebar", "");
@@ -226,7 +303,8 @@ export function initAppearance() {
       layout();
     }
   };
-  document
-    .getElementById("sessions")!
-    .addEventListener("click", () => document.body.classList.remove("sidebar-drawer"));
+  document.getElementById("sessions")!.addEventListener("click", (event) => {
+    if (event.target instanceof Element && event.target.closest(".session-select"))
+      document.body.classList.remove("sidebar-drawer");
+  });
 }
