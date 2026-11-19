@@ -14,6 +14,8 @@ if (process.env.AXIOM_DESKTOP === "1") {
   if (!config.runtimePort) throw Error("Desktop requires a configured runtime port");
   config.port = 0;
 }
+config.terminalBackend ??= "node";
+if (!["node", "rust"].includes(config.terminalBackend)) throw Error("Invalid terminalBackend");
 config.workspace = resolve(root, config.workspace);
 config.sessionDir = resolve(root, config.sessionDir);
 mkdirSync(config.workspace, { recursive: true });

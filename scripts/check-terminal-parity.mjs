@@ -123,7 +123,7 @@ test("workbench routes Rust terminal and preserves live session across host rest
   await writeFile(join(sessionDir,"runtime.token"),token);
   await writeFile(config,JSON.stringify({workspace,sessionDir,runtimePort,rustTerminalPort,terminalBackend:"rust",rustTerminalBinary:daemon,discoverContext:false}));
   let host;
-  async function startHost(){
+  async function startHost(expectMismatch=false){
     const child=spawn(process.execPath,[join(runtimeRoot,"src/server.mjs")],{
       env:{...process.env,AXIOM_CONFIG:config,AXIOM_DESKTOP:"1",PI_CODING_AGENT_DIR:join(dir,"pi-agent")},
       stdio:["pipe","pipe","pipe"],windowsHide:true
@@ -149,7 +149,8 @@ test("workbench routes Rust terminal and preserves live session across host rest
         method:body===undefined?"GET":"POST",body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(20000)
       });
       const health=await api("runtime-health");
-      assert.ok(health.ok,await health.clone().text());
+      if(expectMismatch){assert.ok(!health.ok);assert.match(await health.text(),/Running terminal backend is rust; configured backend is node/);}
+      else assert.ok(health.ok,await health.clone().text());
       return {base,api,stop};
     }catch(e){await stop();throw e;}
   }
@@ -169,6 +170,13 @@ test("workbench routes Rust terminal and preserves live session across host rest
     const cmd=(suffix)=>host.api("terminal-action",{action:"input",value:{id,data:"Write-Output ('AXIOM_'+'WEB_"+suffix+"')\r"}});
     await receive(host,id,token,(_e,output)=>output.includes("AXIOM_WEB_BEFORE"),async()=>assert.ok((await cmd("BEFORE")).ok));
     await host.stop();
+    const savedConfig=await readFile(config,"utf8");
+    await writeFile(config,JSON.stringify({...JSON.parse(savedConfig),terminalBackend:"node"}));
+    host=await startHost(true);
+    assert.equal((await directHealth(runtimePort)).pid,nodeHealth.pid);
+    assert.equal((await directHealth(rustTerminalPort)).pid,rustHealth.pid);
+    await host.stop();
+    await writeFile(config,savedConfig);
     host=await startHost();
     assert.equal((await directHealth(runtimePort)).pid,nodeHealth.pid);
     assert.equal((await directHealth(rustTerminalPort)).pid,rustHealth.pid);

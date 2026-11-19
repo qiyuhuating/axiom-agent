@@ -33,7 +33,12 @@ const server = createServer(async (req, res) => {
     if (token !== runtimeToken) return json(res, { error: "Unauthorized" }, 403);
     if (req.method === "GET") {
       if (path === "/api/runtime-health")
-        return json(res, { ok: true, pid: process.pid, protocol: 1 });
+        return json(res, {
+          ok: true,
+          pid: process.pid,
+          protocol: 1,
+          terminalBackend: config.terminalBackend,
+        });
       if (path === "/api/jobs") return json(res, ctx.axiomJobs.state());
       if (path === "/api/terminals") return json(res, await ctx.axiomTerminal.listAsync());
       if (path === "/api/terminal/events") {
