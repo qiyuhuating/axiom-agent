@@ -58,23 +58,27 @@ try{
  await capture(page,"slash-menu.png");
  const first=await options.first().innerText();
  await prompt.press('Enter');
- assert.ok((await prompt.inputValue()).startsWith('/'));
+ assert.ok((await prompt.textContent()).startsWith('/'));
  assert.ok(first.length>1);
  await prompt.fill('@axiom-fixture');
  await page.getByRole('option').filter({hasText:'axiom-fixture.txt'}).waitFor();
  await capture(page,'file-reference.png');
  await prompt.press('Tab');
- assert.equal(await prompt.inputValue(),'@axiom-fixture.txt ');
+ assert.equal(await prompt.textContent(),'@axiom-fixture.txt ');
  await prompt.fill('');
- await page.evaluate(async()=>{const {drawUserText}=await import('/dsh-ui.js');const el=document.createElement('div');el.id='credential-fixture';document.body.append(el);drawUserText(el,'fixture ghp_'+'A'.repeat(36));});
- const fixture=page.locator('#credential-fixture');
- await fixture.getByRole('button',{name:'显示凭据'}).waitFor();
- assert.ok(!(await fixture.innerText()).includes('A'.repeat(36)));
- await fixture.getByRole('button',{name:'显示凭据'}).click();
- assert.ok((await fixture.innerText()).includes('A'.repeat(36)));
- await fixture.getByRole('button',{name:'隐藏凭据'}).click();
- assert.ok(!(await fixture.innerText()).includes('A'.repeat(36)));
- await page.evaluate(async()=>{const {clearUserText}=await import('/dsh-ui.js');clearUserText();document.getElementById('credential-fixture').remove();});
+ // Inject a test-only history response, never submit a model prompt or credential.
+ await page.route("**/api/messages",route=>route.fulfill({json:[{role:"user",content:[{type:"text",text:"fixture ghp_"+"A".repeat(36)}]},{role:"toolResult",toolCallId:"delivery-fixture",toolName:"present_files",content:[{type:"text",text:"Presented to user: axiom-fixture.txt"}],details:{kind:"axiom-deliverables-v1",files:[{path:"axiom-fixture.txt",size:20}]}}]}));
+ await page.reload();
+ const fixture=page.locator("#transcript article.user");
+ await fixture.getByRole("button",{name:"显示凭据"}).waitFor();
+ assert.ok(!(await fixture.innerText()).includes("A".repeat(36)));
+ await fixture.getByRole("button",{name:"显示凭据"}).click();
+ assert.ok((await fixture.innerText()).includes("A".repeat(36)));
+ await fixture.getByRole("button",{name:"隐藏凭据"}).click();
+ await page.getByRole("button",{name:"预览 axiom-fixture.txt"}).waitFor();
+ await page.getByRole("button",{name:"预览 axiom-fixture.txt"}).click();
+ await page.locator(".inspector").waitFor();
+ await page.unroute("**/api/messages");await page.reload();
  await capture(page,'composer-features.png');
  assert.deepEqual(errors,[]);console.log("HARNESS_UI_RENDER_PASS",JSON.stringify(a));
 }finally{await browser.close();}

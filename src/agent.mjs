@@ -44,6 +44,8 @@ export class Agent {
         resolve(root, "src/approval.ts"),
         "--extension",
         resolve(root, "src/providers.ts"),
+        "--extension",
+        resolve(root, "src/deliverables.ts"),
       ],
       env: {
         AXIOM_MAX_OUTPUT_TOKENS: String(config.maxOutputTokens ?? ""),

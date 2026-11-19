@@ -32,7 +32,7 @@ try{
  base='http://127.0.0.1:'+port;
  const get=async path=>{const res=await fetch(base+path,{signal:AbortSignal.timeout(20000)});assert.ok(res.ok,await res.clone().text());return res;};
  const post=async(path,body)=>{const res=await fetch(base+path,{method:'POST',headers:{Origin:base,'X-Axiom-Client':'1','Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(20000)});assert.ok(res.ok,await res.clone().text());return res.json();};
- for(const path of ['/','/app.js','/markdown.js','/dsh-ui.js','/workbench.js','/workbench.css'])await get(path);
+ for(const path of ['/','/app.js','/app.css'])await get(path);
  const health=await (await get('/api/health')).json();assert.equal(health.ok,true);
  const state=await(await get('/api/state')).json();assert.equal(state.workspace,workspace);
  const runtime=await(await get('/api/runtime-health')).json();assert.equal(runtime.ok,true);assert.equal(runtime.terminalBackend,"rust");

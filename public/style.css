@@ -177,3 +177,14 @@ body.sidebar-collapsed #sidebar-settings span,body.sidebar-collapsed #sidebar-pa
 .composer form{position:relative;}
 #composer-menu{position:absolute;inset:0;pointer-events:none;}
 #composer-menu>div{pointer-events:auto;}
+
+#root{display:contents;}
+
+.plan-dock{--dsh-composer-side-clearance:0px;--dsh-composer-dock-inset:0px;--dsh-composer-card-max-width:764px;display:flex;flex-direction:column;gap:6px;margin-bottom:6px;}
+#transcript article.user{padding:0;background:transparent;}
+#trace table button{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:none;}
+#trace table td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+.draft-editor{position:relative;min-width:0;}.axiom-lexical-input{min-height:76px;max-height:220px;padding:6px;overflow:auto;outline:none;white-space:pre-wrap;overflow-wrap:anywhere;}.axiom-lexical-input p{margin:0;}.axiom-lexical-input[data-empty]::before{content:attr(data-placeholder);color:var(--dsw-alias-label-tertiary);position:absolute;pointer-events:none;}
+
+.draft-editor { border: 0; padding: 0; margin: 0; min-width: 0; }

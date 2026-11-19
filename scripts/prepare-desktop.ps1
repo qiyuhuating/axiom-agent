@@ -7,7 +7,7 @@ $stage=Join-Path $root '.desktop-runtime'
 if(Test-Path $stage){Remove-Item -LiteralPath $stage -Recurse -Force}
 New-Item -ItemType Directory -Force $stage,(Join-Path $stage 'public'),(Join-Path $stage 'scripts')|Out-Null
 foreach($path in 'src','vendor','package.json','package-lock.json','LICENSE','THIRD_PARTY_NOTICES.md','axiom.config.example.json'){Copy-Item -LiteralPath (Join-Path $root $path) -Destination $stage -Recurse -Force}
-foreach($path in 'app.js','index.html','style.css'){Copy-Item -LiteralPath (Join-Path $root "public/$path") -Destination (Join-Path $stage 'public')}
+foreach($path in 'index.html','style.css'){Copy-Item -LiteralPath (Join-Path $root "public/$path") -Destination (Join-Path $stage 'public')}
 foreach($path in 'pi.mjs','runtime-stop.mjs'){Copy-Item -LiteralPath (Join-Path $root "scripts/$path") -Destination (Join-Path $stage 'scripts')}
 node scripts/build-ui.mjs (Join-Path $stage 'public')
 if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}

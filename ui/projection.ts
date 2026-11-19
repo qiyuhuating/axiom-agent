@@ -1,0 +1,412 @@
+import { useSyncExternalStore } from "react";
+import { api } from "./panel-shared.tsx";
+export type Dialog = {
+  id: string;
+  method: string;
+  title?: string;
+  message?: string;
+  options?: string[];
+  placeholder?: string;
+  prefill?: string;
+};
+type Message = {
+  role: string;
+  content: any;
+  errorMessage?: string;
+  toolCallId?: string;
+  toolName?: string;
+  isError?: boolean;
+  details?: unknown;
+};
+export type Tool = {
+  id: string;
+  name: string;
+  args?: unknown;
+  result?: unknown;
+  finished: boolean;
+  failed: boolean;
+  started?: number;
+  ended?: number;
+  details?: unknown;
+};
+type Session = { id: string; name?: string; firstMessage?: string };
+type State = {
+  sessionId: string;
+  workspace: string;
+  busy: boolean;
+  model?: { provider: string; id: string };
+  thinkingLevel?: string;
+};
+type Model = { provider: string; id: string };
+type Attachment = {
+  name: string;
+  path?: string;
+  image?: { type: "image"; mimeType: string; data: string };
+};
+export type Job = {
+  id: string;
+  team?: string;
+  node?: string;
+  label: string;
+  status: string;
+  activity?: string;
+  error?: string;
+  steps?: string[];
+  blockedBy: string[];
+};
+type JobState = {
+  jobs: Job[];
+  schedules: any[];
+  plans: Record<string, { goal: string; items: { text: string; done: boolean }[] }>;
+};
+type Snapshot = {
+  jobs: JobState | null;
+  state: State | null;
+  messages: Message[];
+  tools: Tool[];
+  stream: string;
+  models: Model[];
+  levels: string[];
+  sessions: Session[];
+  dialogs: Dialog[];
+  draft: string;
+  attachments: Attachment[];
+  syncing: boolean;
+  changing: boolean;
+  busy: boolean;
+  connected: boolean;
+  error: string;
+  notice: string;
+};
+let snapshot: Snapshot = {
+  jobs: null,
+  state: null,
+  messages: [],
+  tools: [],
+  stream: "",
+  models: [],
+  levels: [],
+  sessions: [],
+  dialogs: [],
+  draft: "",
+  attachments: [],
+  syncing: true,
+  changing: false,
+  busy: false,
+  connected: false,
+  error: "",
+  notice: "",
+};
+const listeners = new Set<() => void>();
+function update(patch: Partial<Snapshot>) {
+  snapshot = { ...snapshot, ...patch };
+  for (const listener of listeners) listener();
+}
+const subscribe = (listener: () => void) => {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+};
+export const getSnapshot = () => snapshot;
+export function useProjection() {
+  return useSyncExternalStore(subscribe, getSnapshot);
+}
+export const setDraft = (draft: string) => {
+  if (draft !== snapshot.draft) update({ draft });
+};
+export const appendDraft = (text: string) =>
+  setDraft([snapshot.draft, text].filter(Boolean).join("\n"));
+export const setError = (e: unknown) =>
+  update({ error: e instanceof Error ? e.message : String(e ?? "") });
+export async function run(fn: () => Promise<unknown>) {
+  setError("");
+  try {
+    await fn();
+  } catch (e) {
+    setError(e);
+  }
+}
+export const action = (action: string, value?: unknown, images?: unknown[]) =>
+  api("action", { action, value, ...(images?.length ? { images } : {}) });
+export function textOf(content: any): string {
+  return typeof content === "string"
+    ? content
+    : (content ?? [])
+        .filter((x: any) => x.type === "text")
+        .map((x: any) => x.text)
+        .join("\n");
+}
+function upsertTool(tools: Tool[], e: Partial<Tool> & { id: string }): Tool[] {
+  const old = tools.find((t) => t.id === e.id);
+  const next = {
+    id: e.id,
+    name: e.name ?? old?.name ?? "tool",
+    args: e.args ?? old?.args,
+    result: e.result ?? old?.result,
+    finished: e.finished ?? old?.finished ?? false,
+    failed: e.failed ?? old?.failed ?? false,
+    started: e.started ?? old?.started,
+    ended: e.ended ?? old?.ended,
+    details: e.details ?? old?.details,
+  };
+  return old ? tools.map((t) => (t.id === e.id ? next : t)) : [...tools, next];
+}
+export function projectHistory(messages: Message[]) {
+  let tools: Tool[] = [];
+  for (const m of messages) {
+    if (Array.isArray(m.content))
+      for (const c of m.content)
+        if (c.type === "toolCall")
+          tools = upsertTool(tools, { id: c.id, name: c.name, args: c.arguments });
+    if (m.role === "toolResult" && m.toolCallId)
+      tools = upsertTool(tools, {
+        id: m.toolCallId,
+        name: m.toolName,
+        result: m.content,
+        details: m.details,
+        failed: !!m.isError,
+        finished: true,
+      });
+  }
+  return { messages: messages.filter((m) => ["user", "assistant"].includes(m.role)), tools };
+}
+let generation = 0;
+let pendingEvents: any[] | null = null;
+export async function refresh() {
+  const id = ++generation;
+  pendingEvents = [];
+  update({ syncing: true });
+  try {
+    const [state, messages, sessions, dialogs] = await Promise.all([
+      api("state"),
+      api("messages"),
+      api("sessions"),
+      api("dialogs"),
+    ]);
+    if (id !== generation) return;
+    const switched = snapshot.state?.sessionId !== state.sessionId;
+    const buffered = pendingEvents;
+    pendingEvents = null;
+    const projected = projectHistory(messages);
+    if (!switched) {
+      projected.tools = projected.tools.map((t) => {
+        const old = snapshot.tools.find((v) => v.id === t.id);
+        return old ? { ...t, started: old.started, ended: old.ended } : t;
+      });
+    }
+    update({
+      state,
+      ...projected,
+      sessions,
+      dialogs,
+      stream: "",
+      busy: state.busy,
+      syncing: false,
+    });
+    // Live events during an unversioned snapshot cannot safely be replayed:
+    // completed messages/dialogs may already be present. Refresh on settlement.
+    if (
+      buffered?.some(
+        (e) =>
+          e.type === "agent_settled" ||
+          e.type === "state_changed" ||
+          e.type === "message_end" ||
+          e.type === "extension_ui_request" ||
+          e.type === "ui_closed",
+      )
+    )
+      queueMicrotask(() => void run(refresh));
+    else if (buffered?.length) {
+      for (const e of buffered) handleEvent(e);
+    }
+    if (switched) window.dispatchEvent(new Event("axiom:session"));
+  } finally {
+    if (id === generation) {
+      pendingEvents = null;
+      update({ syncing: false });
+    }
+  }
+}
+let jobRequest: Promise<JobState> | undefined;
+export function loadJobs() {
+  jobRequest ??= api("jobs")
+    .then((jobs: JobState) => {
+      update({ jobs });
+      return jobs;
+    })
+    .finally(() => {
+      jobRequest = undefined;
+    });
+  return jobRequest;
+}
+export async function loadOptions() {
+  const [models, levels, state] = await Promise.all([api("models"), api("levels"), api("state")]);
+  if (snapshot.state?.sessionId === state.sessionId)
+    update({ models, levels, state, busy: state.busy });
+}
+export async function changeSession(kind: string, value?: unknown) {
+  if (snapshot.busy || snapshot.changing || snapshot.syncing)
+    throw Error("Agent is busy or synchronizing");
+  update({ changing: true });
+  try {
+    const result = await action(kind, value);
+    if (kind === "fork" && !result.cancelled && typeof result.text === "string")
+      setDraft(result.text);
+    if (result.cancelled) throw Error("Pi cancelled the session operation");
+  } finally {
+    try {
+      await refresh();
+    } finally {
+      update({ changing: false });
+    }
+  }
+  await loadOptions();
+}
+export function removeDialog(id: string) {
+  update({ dialogs: snapshot.dialogs.filter((d) => d.id !== id) });
+}
+let recovering = false;
+export function connect() {
+  const events = new EventSource("/api/events");
+  events.onopen = () => {
+    update({ connected: true });
+    void run(async () => {
+      await refresh();
+      await loadOptions();
+    });
+  };
+  events.onerror = () => update({ connected: false });
+  events.onmessage = ({ data }) => handleEvent(JSON.parse(data));
+  return () => {
+    events.close();
+    generation++;
+    pendingEvents = null;
+  };
+}
+function handleEvent(e: any) {
+  if (pendingEvents && e.type !== "connection_error") {
+    pendingEvents.push(e);
+    return;
+  }
+  if (typeof e.busy === "boolean" && e.busy !== snapshot.busy) update({ busy: e.busy });
+  switch (e.type) {
+    case "message_start":
+      if (e.message.role === "assistant") update({ stream: "" });
+      break;
+    case "message_update":
+      if (e.assistantMessageEvent.type === "text_delta")
+        update({ stream: snapshot.stream + e.assistantMessageEvent.delta });
+      break;
+    case "message_end":
+      if (["user", "assistant"].includes(e.message.role))
+        update({
+          messages: [...snapshot.messages, e.message],
+          stream: e.message.role === "assistant" ? "" : snapshot.stream,
+          ...(e.message.errorMessage ? { error: e.message.errorMessage } : {}),
+        });
+      break;
+    case "agent_settled":
+      void run(refresh);
+      break;
+    case "state_changed":
+      if (!snapshot.changing)
+        void run(async () => {
+          await refresh();
+          await loadOptions();
+        });
+      break;
+    case "ui_closed":
+      removeDialog(e.id);
+      break;
+    case "extension_ui_request":
+      if (["confirm", "select", "input", "editor"].includes(e.method)) {
+        if (!snapshot.dialogs.some((d) => d.id === e.id))
+          update({ dialogs: [...snapshot.dialogs, e] });
+      } else if (e.method === "set_editor_text") setDraft(e.text ?? "");
+      else if (["notify", "setStatus", "setWidget", "setTitle"].includes(e.method))
+        update({
+          notice:
+            e.message ?? e.text ?? e.title ?? (Array.isArray(e.lines) ? e.lines.join(" ") : ""),
+        });
+      break;
+    case "connection_error":
+      setError(e.error);
+      if (!recovering) {
+        recovering = true;
+        void run(async () => {
+          try {
+            await refresh();
+            await loadOptions();
+          } finally {
+            recovering = false;
+          }
+        });
+      }
+      break;
+    default:
+      if (e.type.startsWith("tool_execution_"))
+        update({
+          tools: upsertTool(snapshot.tools, {
+            id: e.toolCallId,
+            name: e.toolName,
+            args: e.args,
+            result: e.result ?? e.partialResult,
+            details: e.result?.details,
+            failed: !!e.isError,
+            finished: e.type === "tool_execution_end",
+            ...(e.type === "tool_execution_start" ? { started: Date.now() } : {}),
+            ...(e.type === "tool_execution_end" ? { ended: Date.now() } : {}),
+          }),
+        });
+  }
+}
+export function removeAttachment(index: number) {
+  update({ attachments: snapshot.attachments.filter((_, i) => i !== index) });
+}
+export async function addFiles(files: File[]) {
+  for (const file of files) {
+    try {
+      if (file.size > 8 * 1024 * 1024) throw Error("Attachment exceeds 8 MiB");
+      if (snapshot.attachments.length >= 8) throw Error("At most 8 attachments");
+      const data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result).split(",")[1]);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
+      let attachment: Attachment;
+      if (["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type))
+        attachment = { name: file.name, image: { type: "image", mimeType: file.type, data } };
+      else {
+        const result = await api("upload", { name: file.name, data });
+        attachment = { name: file.name, path: result.path };
+      }
+      update({ attachments: [...snapshot.attachments, attachment] });
+    } catch (e) {
+      setError(e);
+    }
+  }
+}
+let submitting = false;
+export async function submit(mode: string) {
+  if (submitting || snapshot.syncing || snapshot.changing || !snapshot.connected) return;
+  const { draft, attachments, busy } = snapshot;
+  const suffix = attachments
+    .filter((a) => a.path)
+    .map((a) => "附件：" + a.name + "（工作区路径：" + a.path + "）")
+    .join("\n");
+  const images = attachments.flatMap((a) => (a.image ? [a.image] : []));
+  const text = [draft.trim(), suffix].filter(Boolean).join("\n");
+  if (!text && !images.length) return;
+  submitting = true;
+  try {
+    await action(busy ? mode : "prompt", text || "请分析附加图片。", images);
+    update({
+      draft: snapshot.draft === draft ? "" : snapshot.draft,
+      attachments: snapshot.attachments.filter((a) => !attachments.includes(a)),
+    });
+  } finally {
+    submitting = false;
+  }
+}

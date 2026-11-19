@@ -24,12 +24,8 @@ const agent = new Agent();
 const assets = new Map([
   ["/", ["index.html", "text/html"]],
   ["/app.js", ["app.js", "text/javascript"]],
+  ["/app.css", ["app.css", "text/css"]],
   ["/style.css", ["style.css", "text/css"]],
-  ["/markdown.js", ["markdown.js", "text/javascript"]],
-  ["/dsh-ui.js", ["dsh-ui.js", "text/javascript"]],
-  ["/dsh-ui.css", ["dsh-ui.css", "text/css"]],
-  ["/workbench.js", ["workbench.js", "text/javascript"]],
-  ["/workbench.css", ["workbench.css", "text/css"]],
 ]);
 function json(res, data, status = 200) {
   res.writeHead(status, {
