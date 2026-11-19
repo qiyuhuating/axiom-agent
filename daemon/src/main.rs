@@ -1,5 +1,6 @@
 //! First migration slice: the native terminal HTTP contract.
 //! The existing Node runtime remains authoritative until parity gates pass.
+mod process_tree;
 use anyhow::{bail, Context, Result};
 use axum::{
     extract::{DefaultBodyLimit, Query, State},
@@ -13,6 +14,7 @@ use axum::{
     Json, Router,
 };
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
+use process_tree::ProcessTree;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
@@ -52,6 +54,7 @@ struct Terminal {
 }
 
 struct Live {
+    _tree: ProcessTree,
     master: Box<dyn MasterPty + Send>,
     killer: Box<dyn ChildKiller + Send + Sync>,
     input: mpsc::SyncSender<Vec<u8>>,
@@ -112,7 +115,8 @@ impl Terminal {
         self.dirty.store(true, Ordering::Release);
         let _ = self.events.send(json!({"exit":code}));
         drop(record);
-        self.live.lock().unwrap().take();
+        let handles = self.live.lock().unwrap().take();
+        drop(handles);
     }
 }
 
@@ -240,6 +244,13 @@ impl Store {
         let mut writer = pair.master.take_writer()?;
         let mut child = pair.slave.spawn_command(command)?;
         drop(pair.slave);
+        let tree = match ProcessTree::attach(child.as_ref()) {
+            Ok(tree) => tree,
+            Err(e) => {
+                let _ = child.kill();
+                return Err(e);
+            }
+        };
         let killer = child.clone_killer();
         let (input, rx) = mpsc::sync_channel::<Vec<u8>>(32);
         let id = Uuid::new_v4().to_string();
@@ -255,6 +266,7 @@ impl Store {
         *terminal.live.lock().unwrap() = Some(Live {
             master: pair.master,
             killer,
+            _tree: tree,
             input,
         });
         terminals.insert(id.clone(), terminal.clone());
@@ -294,6 +306,10 @@ impl Store {
             terminal.stop(false);
             let _ = terminal.events.send(json!({"closed":true}));
             self.persist()?;
+            return Ok(json!({"ok":true}));
+        }
+        if action == "terminate" {
+            terminal.stop(false);
             return Ok(json!({"ok":true}));
         }
         let live = terminal.live.lock().unwrap();

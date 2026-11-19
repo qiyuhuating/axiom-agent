@@ -25,13 +25,21 @@ export async function createRuntimeContext(jobs, terminal) {
       super(ctx, "axiomTerminal");
     }
     list() {
+      return terminal.legacy ? terminal.legacy.list() : terminal.listTerminals();
+    }
+    listAsync() {
       return terminal.listTerminals();
     }
+    actionAsync(action, value) {
+      return terminal.terminalAction(action, value);
+    }
     get(id) {
-      return terminal.getTerminal(id);
+      return terminal.legacy ? terminal.legacy.get(id) : terminal.getTerminal(id);
     }
     action(action, value) {
-      return terminal.terminalAction(action, value);
+      return terminal.legacy
+        ? terminal.legacy.action(action, value)
+        : terminal.terminalAction(action, value);
     }
   }
   await ctx.plugin(JobService);

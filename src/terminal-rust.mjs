@@ -6,6 +6,7 @@ import { pipeline } from "node:stream/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import { config, root } from "./config.mjs";
 import { runtimePort, runtimeToken } from "./runtime-auth.mjs";
+import { createCordisTerminalAdapter } from "./terminal-cordis.mjs";
 
 // Experimental backend; the existing job runtime and native Node PTY remain
 // the default. A distinct archive prevents two processes writing one history.
@@ -94,7 +95,9 @@ export async function createRustTerminalBackend() {
     return result;
   }
   await ensure();
+  const legacy = createCordisTerminalAdapter(base, runtimeToken);
   return {
+    legacy,
     listTerminals: () => call("/api/terminals"),
     terminalAction: (action, value) => call("/api/terminal-action", { action, value }),
     getTerminal: (id) => call("/api/terminal-snapshot?id=" + encodeURIComponent(id)),
@@ -116,6 +119,7 @@ export async function createRustTerminalBackend() {
       }
     },
     async closeTerminals() {
+      await legacy.close();
       if (!(await ready())) return;
       const r = await fetch(base + "/api/runtime-stop", {
         method: "POST",

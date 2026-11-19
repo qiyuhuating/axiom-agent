@@ -35,7 +35,7 @@ const server = createServer(async (req, res) => {
       if (path === "/api/runtime-health")
         return json(res, { ok: true, pid: process.pid, protocol: 1 });
       if (path === "/api/jobs") return json(res, ctx.axiomJobs.state());
-      if (path === "/api/terminals") return json(res, await ctx.axiomTerminal.list());
+      if (path === "/api/terminals") return json(res, await ctx.axiomTerminal.listAsync());
       if (path === "/api/terminal/events") {
         if (term.streamTerminal) return await term.streamTerminal(req, res);
         const t = ctx.axiomTerminal.get(url.searchParams.get("id"));
@@ -67,7 +67,7 @@ const server = createServer(async (req, res) => {
       const { action, value } = await body(req);
       if (path === "/api/job-action") return json(res, await ctx.axiomJobs.action(action, value));
       if (path === "/api/terminal-action")
-        return json(res, await ctx.axiomTerminal.action(action, value));
+        return json(res, await ctx.axiomTerminal.actionAsync(action, value));
       if (path === "/api/runtime-stop") {
         json(res, { ok: true });
         void shutdown();

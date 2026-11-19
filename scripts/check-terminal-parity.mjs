@@ -44,7 +44,7 @@ async function launch(backend,fixture){
   try{
     for(let i=0;i<100;i++){
       if(child.exitCode!==null||child.signalCode!==null)throw Error(backend+" exited: "+stderr);
-      try{const r=await api("runtime-health");if(r.ok){assert.equal((await r.json()).ok,true);return {base,api,stop};}}catch{}
+      try{const r=await api("runtime-health");if(r.ok){assert.equal((await r.json()).ok,true);return {base,api,stop,kill:async()=>{child.kill();await exited;}};}}catch{}
       await delay(75);
     }
     throw Error(backend+" startup timeout: "+stderr);
@@ -215,5 +215,65 @@ test("offline legacy terminal history imports exactly once without modifying ori
     instance=await launch("rust-bridge",fixture);
     assert.deepEqual(await (await instance.api("terminals")).json(),[]);
     assert.deepEqual(await readFile(join(dir,"terminals.json")),old);
+  }finally{try{await instance?.stop();}finally{await rm(dir,{recursive:true,force:true,maxRetries:8,retryDelay:200});}}
+});
+
+test("Windows terminal job kills descendants on close and daemon crash", {timeout:90000,skip:process.platform!=="win32"}, async()=>{
+  const dir=await mkdtemp(join(tmpdir(),"axiom-pty-tree-"));
+  const fixture={dir,workspace:join(dir,"workspace"),config:join(dir,"config.json"),token:randomBytes(32).toString("hex")};
+  await mkdir(fixture.workspace);await writeFile(join(dir,"runtime.token"),fixture.token);
+  let instance;
+  async function gone(pid){
+    for(let i=0;i<100;i++){
+      try{process.kill(pid,0);}catch(e){if(e.code==="ESRCH")return;throw e;}
+      await delay(100);
+    }
+    assert.fail("Terminal descendant still running: "+pid);
+  }
+  try{
+    for(const mode of ["close","crash","stop"]){
+      instance=await launch("rust",fixture);
+      const {id}=await(await instance.api("terminal-action",{action:"create"})).json();
+      await receive(instance,id,fixture.token,(_e,out)=>/PS [^\r\n]*>/.test(out));
+
+      const pidFile=join(fixture.workspace,mode+".pid");
+      const grandchildFile=join(fixture.workspace,mode+"-grandchild.pid");
+      const psQuote=value=>"'"+value.replaceAll("'","''")+"'";
+      const nested="$p=Start-Process -FilePath (Get-Process -Id $PID).Path -WindowStyle Hidden -ArgumentList @('-NoProfile','-Command','Start-Sleep -Seconds 120') -PassThru; Set-Content -LiteralPath "+psQuote(grandchildFile)+" -Value $p.Id; Start-Sleep -Seconds 120";
+      const encoded=Buffer.from(nested,"utf16le").toString("base64");
+      const cmd="$p=Start-Process -FilePath (Get-Process -Id $PID).Path -WindowStyle Hidden -ArgumentList @('-NoProfile','-EncodedCommand','"+encoded+"') -PassThru; Set-Content -LiteralPath "+psQuote(pidFile)+" -Value $p.Id; Write-Output ('AXIOM_'+'CHILD_READY')\r";
+      await receive(instance,id,fixture.token,(_e,out)=>out.includes("AXIOM_CHILD_READY"),async()=>assert.ok((await instance.api("terminal-action",{action:"input",value:{id,data:cmd}})).ok));
+      const pid=Number((await readFile(pidFile,"utf8")).trim());assert.ok(pid>0);process.kill(pid,0);
+      let grandchild;
+      for(let i=0;i<100;i++){
+        try{grandchild=Number((await readFile(grandchildFile,"utf8")).trim());if(grandchild>0)break;}catch(e){if(e.code!=="ENOENT")throw e;}
+        await delay(100);
+      }
+      assert.ok(grandchild>0);process.kill(grandchild,0);
+      if(mode==="close"){assert.ok((await instance.api("terminal-action",{action:"close",value:{id}})).ok);await instance.stop();}
+      else if(mode==="crash"){await instance.kill();}
+      else {await instance.stop();}
+      await Promise.all([gone(pid),gone(grandchild)]);
+      instance=undefined;
+    }
+  }finally{try{await instance?.stop();}finally{await rm(dir,{recursive:true,force:true,maxRetries:8,retryDelay:200});}}
+});
+
+test("real Cordis plugin retains synchronous create/list/get/action and live listeners", {timeout:90000}, async()=>{
+  const dir=await mkdtemp(join(tmpdir(),"axiom-cordis-terminal-"));
+  const fixture={dir,workspace:join(dir,"workspace"),config:join(dir,"config.json"),token:randomBytes(32).toString("hex")};
+  await mkdir(fixture.workspace);await writeFile(join(dir,"runtime.token"),fixture.token);
+  await writeFile(join(dir,"fixture-terminal.mjs"),await readFile(resolve("scripts/fixtures/cordis-terminal.mjs")));
+  await writeFile(join(dir,"cordis.json"),JSON.stringify([{id:"terminal-fixture",name:"./fixture-terminal.mjs",config:{}}]));
+  let instance;
+  try{
+    instance=await launch("rust-bridge",fixture);
+    const resultPath=join(dir,"terminal-plugin-result.json");
+    let result;
+    for(let i=0;i<200;i++){
+      try{result=JSON.parse(await readFile(resultPath,"utf8"));break;}catch(e){if(e.code!=="ENOENT")throw e;}
+      await delay(100);
+    }
+    assert.deepEqual(result,{ok:true},result?.error||"Plugin did not finish");
   }finally{try{await instance?.stop();}finally{await rm(dir,{recursive:true,force:true,maxRetries:8,retryDelay:200});}}
 });
