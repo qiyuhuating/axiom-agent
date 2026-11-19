@@ -204,6 +204,12 @@ export async function refresh() {
     ]);
     if (id !== generation) return;
     const switched = snapshot.state?.sessionId !== state.sessionId;
+    const live = new Set(dialogs.map((d: Dialog) => "axiom.question-draft.v1:" + d.id));
+    for (let i = sessionStorage.length - 1; i >= 0; i--) {
+      const key = sessionStorage.key(i);
+      if (key?.startsWith("axiom.question-draft.v1:") && !live.has(key))
+        sessionStorage.removeItem(key);
+    }
     const buffered = pendingEvents;
     pendingEvents = null;
     const projected = projectHistory(messages);
@@ -283,6 +289,7 @@ export async function changeSession(kind: string, value?: unknown) {
   await loadOptions();
 }
 export function removeDialog(id: string) {
+  sessionStorage.removeItem("axiom.question-draft.v1:" + id);
   update({ dialogs: snapshot.dialogs.filter((d) => d.id !== id) });
 }
 let recovering = false;

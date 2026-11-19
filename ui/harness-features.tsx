@@ -55,6 +55,18 @@ export function HarnessModeDock() {
         >
           {harness.planMode ? "退出计划模式" : "计划模式"}
         </Button>
+        {g?.phase === "paused" && g.remaining > 0 && (
+          <Button
+            size="sm"
+            disabled={busy || syncing}
+            onClick={() => {
+              if (window.confirm("重新授权剩余 " + g.remaining + " 轮目标推进？"))
+                command("/axiom-goal resume");
+            }}
+          >
+            恢复目标
+          </Button>
+        )}
         {g && (
           <>
             <span className={goalCss.objective} title={maskCredentials(g.objective)}>
@@ -221,6 +233,24 @@ export function TeamOverview({ jobs }: { jobs: Job[] }) {
               取消团队
             </Button>
           )}
+          {!members.some((j) => ["queued", "running"].includes(j.status)) &&
+            members.some((j) =>
+              ["failed", "cancelled", "interrupted", "blocked"].includes(j.status),
+            ) && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  if (window.confirm("重试未完成团队任务？已完成依赖保留，失败步骤会重新运行。"))
+                    void run(async () => {
+                      await api("job-action", { action: "team-retry", value: { id: team } });
+                      await loadJobs();
+                    });
+                }}
+              >
+                重试未完成任务
+              </Button>
+            )}
           <ul className={teamCss.tasks}>
             {members.map((j) => (
               <li className={teamCss.task} key={j.id} data-expanded={expanded === j.id}>
@@ -334,6 +364,7 @@ export function ObservedChanges({ tools }: { tools: Tool[] }) {
               before: string | null;
               after: string;
               source: string;
+              patch?: string;
             };
           }
         | undefined
@@ -361,6 +392,12 @@ export function ObservedChanges({ tools }: { tools: Tool[] }) {
               {row.before?.slice(0, 12) ?? "不存在"} → {row.after.slice(0, 12)}
             </small>
           </span>
+          {typeof row.patch === "string" && (
+            <details>
+              <summary>历史 Diff</summary>
+              <pre>{maskCredentials(row.patch)}</pre>
+            </details>
+          )}
           <Button size="sm" onClick={() => openDelivery(row.path)}>
             预览当前文件
           </Button>

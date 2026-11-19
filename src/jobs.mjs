@@ -7,6 +7,7 @@ import { assertTaskGraphCandidate } from "../vendor/dsh/team/task-graph.mjs";
 import { config, root } from "./config.mjs";
 import { PiClient } from "./pi-client.mjs";
 import { platform } from "./platform/index.mjs";
+import { retryTeam } from "./team-retry.mjs";
 
 const base = resolve(config.sessionDir, "axiom-jobs");
 mkdirSync(base, { recursive: true });
@@ -314,6 +315,12 @@ export async function jobAction(action, value) {
     persist();
     pump();
     return jobs;
+  }
+  if (action === "team-retry") {
+    const retried = retryTeam(state, value.id, workers);
+    persist();
+    pump();
+    return { retried };
   }
   if (action === "team-cancel") {
     const team = state.jobs.filter(

@@ -48,6 +48,8 @@ test("goal continuation consumes bounded budget and pauses for interaction or re
  await cmd.handler("2 verify result",h.ctx);h.handlers.get("session_start")({},h.ctx);start();
  assert.equal(boundary(event,h.ctx),undefined);
  assert.equal(h.entries.at(-1).data.phase,"paused");
+ await cmd.handler("resume",h.ctx);start();
+ assert.equal(boundary(event,h.ctx).entries[0].data.remaining,1);
 });
 test("projection follows active Pi branch only",()=>{
  const tree=[{entry:{id:"a",type:"custom",customType:"axiom-plan-mode-v1",data:true,parentId:null},children:[{entry:{id:"b",parentId:"a",type:"custom",customType:"axiom-plan-mode-v1",data:false},children:[]},{entry:{id:"c",parentId:"a",type:"custom",customType:"axiom-goal-v1",data:{objective:"fixture"}},children:[]}]}];

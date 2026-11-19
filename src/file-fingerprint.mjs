@@ -7,7 +7,7 @@ function within(base, path) {
   const rel = relative(base, path);
   return rel !== "" && !isAbsolute(rel) && rel !== ".." && !rel.startsWith(".." + sep);
 }
-export async function fileFingerprint(workspace, path) {
+export async function fileFingerprint(workspace, path, captureText = false) {
   if (typeof path !== "string" || !path) return null;
   try {
     const base = await realpath(workspace),
@@ -31,7 +31,11 @@ export async function fileFingerprint(workspace, path) {
           ancestor = next;
         }
       }
-      return { path: relative(base, candidate).split(sep).join("/"), sha256: null };
+      return {
+        path: relative(base, candidate).split(sep).join("/"),
+        sha256: null,
+        ...(captureText ? { text: "" } : {}),
+      };
     }
     if (!within(base, actual)) return null;
     const info = await stat(actual);
@@ -49,6 +53,12 @@ export async function fileFingerprint(workspace, path) {
     return {
       path: relative(base, actual).split(sep).join("/"),
       sha256: createHash("sha256").update(data).digest("hex"),
+      ...(captureText &&
+      data.length <= 65536 &&
+      !data.includes(0) &&
+      Buffer.from(data.toString("utf8")).equals(data)
+        ? { text: data.toString("utf8") }
+        : {}),
     };
   } catch {
     return null;

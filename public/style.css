@@ -188,3 +188,5 @@ body.sidebar-collapsed #sidebar-settings span,body.sidebar-collapsed #sidebar-pa
 .draft-editor{position:relative;min-width:0;}.axiom-lexical-input{min-height:76px;max-height:220px;padding:6px;overflow:auto;outline:none;white-space:pre-wrap;overflow-wrap:anywhere;}.axiom-lexical-input p{margin:0;}.axiom-lexical-input[data-empty]::before{content:attr(data-placeholder);color:var(--dsw-alias-label-tertiary);position:absolute;pointer-events:none;}
 
 .draft-editor { border: 0; padding: 0; margin: 0; min-width: 0; }
+
+.quote-message{font-size:12px;color:var(--muted);padding:3px 8px;opacity:0;}article:hover .quote-message,.quote-message:focus-visible{opacity:1;}

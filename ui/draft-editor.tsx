@@ -5,6 +5,7 @@ import {
   $createParagraphNode,
   $createTextNode,
   $getNearestNodeFromDOMNode,
+  $getNodeByKey,
   $getRoot,
   $getSelection,
   $isRangeSelection,
@@ -20,9 +21,21 @@ import {
   $isReferenceChipNode,
   ReferenceChipNode,
 } from "../vendor/dsh/conversation/chip-node.tsx";
+import {
+  $createCommandChipNode,
+  CommandChipNode,
+  registerCommandChipSeat,
+} from "../vendor/dsh/conversation/command-chip-node.tsx";
+import { registerCommandChipSelection } from "../vendor/dsh/conversation/command-chip-selection.ts";
 import { DecoratorPortals } from "../vendor/dsh/conversation/DecoratorPortals.tsx";
 import { $projectDraft } from "../vendor/dsh/conversation/draft-projection.ts";
 import inputCss from "../vendor/dsh/conversation/InputBar.module.css";
+import {
+  $createQuoteNode,
+  $isQuoteNode,
+  QuoteNode,
+  REMOVE_QUOTE_COMMAND,
+} from "../vendor/dsh/conversation/QuoteNode.tsx";
 import {
   $replaceDetectSpanWithNodes,
   $replaceDetectSpanWithText,
@@ -36,17 +49,21 @@ export function DraftEditor({
   disabled,
   onSubmit,
   sessionId,
+  quote,
+  onQuoteConsumed,
 }: {
   draft: string;
   disabled: boolean;
   onSubmit: () => void;
   sessionId: string | undefined;
+  quote: { text: string; id: number } | null;
+  onQuoteConsumed: () => void;
 }) {
   const editor = useMemo(
     () =>
       createEditor({
         namespace: "axiom-composer",
-        nodes: [ReferenceChipNode],
+        nodes: [ReferenceChipNode, CommandChipNode, QuoteNode],
         onError: (error) => {
           throw error;
         },
@@ -69,6 +86,18 @@ export function DraftEditor({
   useLayoutEffect(() => {
     const unregister = registerPlainText(editor),
       history = registerHistory(editor, createEmptyHistoryState(), 1000);
+    const unseat = registerCommandChipSeat(editor),
+      unselect = registerCommandChipSelection(editor);
+    const unquote = editor.registerCommand(
+      REMOVE_QUOTE_COMMAND,
+      (key) => {
+        const node = $getNodeByKey(key);
+        if (!$isQuoteNode(node)) return false;
+        node.remove();
+        return true;
+      },
+      COMMAND_PRIORITY_LOW,
+    );
     const listen = editor.registerUpdateListener(({ editorState, tags }) => {
       const next = editorState.read($projectDraft);
       setProjected((old) =>
@@ -97,6 +126,9 @@ export function DraftEditor({
       COMMAND_PRIORITY_LOW,
     );
     return () => {
+      unquote();
+      unselect();
+      unseat();
       click();
       listen();
       history();
@@ -122,6 +154,23 @@ export function DraftEditor({
       { tag: "axiom-external-draft", discrete: true },
     );
   }, [editor, draft]);
+  useLayoutEffect(() => {
+    if (!quote || disabled) return;
+    editor.update(
+      () => {
+        const root = $getRoot();
+        const paragraph = $createParagraphNode();
+        paragraph.append($createQuoteNode(quote.text, { remove: "移除引用" }));
+        root.append(paragraph);
+        const next = $createParagraphNode();
+        root.append(next);
+        next.selectEnd();
+      },
+      { discrete: true },
+    );
+    onQuoteConsumed();
+    editor.getRootElement()?.focus();
+  }, [editor, quote, disabled, onQuoteConsumed]);
   const menu = useComposerSuggestions({
     text: projected.detectText,
     caret: projected.caret,
@@ -145,7 +194,12 @@ export function DraftEditor({
                   }),
                   $createTextNode(" "),
                 ])
-              : $replaceDetectSpanWithText({ start, end }, text);
+              : candidate.kind === "command" && start === 0
+                ? $replaceDetectSpanWithNodes({ start, end }, [
+                    $createCommandChipNode({ name: candidate.name, token: candidate.insert }),
+                    $createTextNode(" "),
+                  ])
+                : $replaceDetectSpanWithText({ start, end }, text);
         },
         { discrete: true },
       );

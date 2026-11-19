@@ -10,7 +10,7 @@ import {
   SunMoon,
 } from "lucide-react";
 import MarkdownIt from "markdown-it";
-import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import heroCss from "../vendor/dsh/conversation/HeroShell.module.css";
 import inputCss from "../vendor/dsh/conversation/InputBar.module.css";
@@ -59,6 +59,8 @@ function App() {
     l = useLayout();
   const files = useRef<HTMLInputElement>(null),
     transcript = useRef<HTMLElement>(null);
+  const [quote, setQuote] = useState<{ text: string; id: number } | null>(null);
+  const clearQuote = useCallback(() => setQuote(null), []);
   const [queue, setQueue] = useState("steer");
   const [mode, setMode] = useState(() => localStorage.getItem("axiom.appearance") || "system");
   const [systemDark, setSystemDark] = useState(
@@ -267,7 +269,32 @@ function App() {
               <article key={(p.state?.sessionId ?? "") + ":" + i} className={m.role}>
                 <b>{m.role === "user" ? "你" : "Axiom"}</b>
                 {m.role === "assistant" ? (
-                  <MarkdownMessage text={text} />
+                  <>
+                    <MarkdownMessage text={text} />
+                    <button
+                      type="button"
+                      className="quote-message"
+                      title="引用此回复"
+                      disabled={locked}
+                      onClick={() => {
+                        const selected = window.getSelection();
+                        const article = transcript.current;
+                        const selection = selected?.toString().trim();
+                        const within =
+                          selected?.anchorNode &&
+                          selected?.focusNode &&
+                          article?.contains(selected.anchorNode) &&
+                          article.contains(selected.focusNode);
+                        setQuote({
+                          text: (within && selection ? selection : text).slice(0, 16000),
+                          id: Date.now(),
+                        });
+                        selected?.removeAllRanges();
+                      }}
+                    >
+                      引用
+                    </button>
+                  </>
                 ) : (
                   <UserMessageBubble>
                     <UserText text={text} />
@@ -314,6 +341,8 @@ function App() {
             </div>
             <DraftEditor
               key={p.state?.sessionId}
+              quote={quote}
+              onQuoteConsumed={clearQuote}
               draft={p.draft}
               disabled={p.syncing || p.changing || !p.connected}
               sessionId={p.state?.sessionId}

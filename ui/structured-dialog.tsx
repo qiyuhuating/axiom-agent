@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { validateAnswer } from "../src/interaction-protocol.mjs";
 import css from "../vendor/dsh/capabilities/QuestionComposer.module.css";
 import { Button } from "../vendor/dsh/primitives/Button.tsx";
@@ -19,16 +19,71 @@ type Request =
   | { kind: "questions"; questions: Question[] }
   | { kind: "plan-review"; title: string; markdown: string };
 type Answer = { id: string; selected: string[]; custom: string; skipped: boolean };
+// Retain only unfinished progress for the same live RPC request in this WebView.
+const prefix = "axiom.question-draft.v1:";
+function restore(dialog: Dialog, request: Request) {
+  try {
+    const raw = sessionStorage.getItem(prefix + dialog.id);
+    if (!raw) return null;
+    const value = JSON.parse(raw);
+    if (
+      value.request !== dialog.prefill ||
+      typeof value.feedback !== "string" ||
+      value.feedback.length > 8000
+    )
+      return null;
+    if (request.kind === "plan-review") return { index: 0, answers: [], feedback: value.feedback };
+    if (
+      !Number.isInteger(value.index) ||
+      value.index < 0 ||
+      value.index >= request.questions.length ||
+      !Array.isArray(value.answers) ||
+      value.answers.length !== request.questions.length
+    )
+      return null;
+    for (let i = 0; i < value.answers.length; i++) {
+      const a = value.answers[i],
+        q = request.questions[i];
+      if (
+        a?.id !== q.id ||
+        !Array.isArray(a.selected) ||
+        typeof a.custom !== "string" ||
+        typeof a.skipped !== "boolean" ||
+        a.custom.length > 4000
+      )
+        return null;
+      const partial =
+        a.selected.length || a.custom.trim() || a.skipped ? a : { ...a, skipped: true };
+      validateAnswer({ kind: "questions", questions: [q] }, JSON.stringify({ answers: [partial] }));
+    }
+    return value as { index: number; answers: Answer[]; feedback: string };
+  } catch {
+    return null;
+  }
+}
 export function StructuredDialog({ dialog, request }: { dialog: Dialog; request: Request }) {
-  const [index, setIndex] = useState(0),
+  const [saved] = useState(() => restore(dialog, request));
+  const [index, setIndex] = useState(saved?.index ?? 0),
     [working, setWorking] = useState(false),
     [error, setError] = useState("");
-  const [feedback, setFeedback] = useState("");
-  const [answers, setAnswers] = useState<Answer[]>(() =>
-    request.kind === "questions"
-      ? request.questions.map((q) => ({ id: q.id, selected: [], custom: "", skipped: false }))
-      : [],
+  const [feedback, setFeedback] = useState(saved?.feedback ?? "");
+  const [answers, setAnswers] = useState<Answer[]>(
+    () =>
+      saved?.answers ??
+      (request.kind === "questions"
+        ? request.questions.map((q) => ({ id: q.id, selected: [], custom: "", skipped: false }))
+        : []),
   );
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(
+        prefix + dialog.id,
+        JSON.stringify({ request: dialog.prefill, index, answers, feedback }),
+      );
+    } catch {
+      /* storage is optional; live RPC remains usable */
+    }
+  }, [dialog.id, dialog.prefill, index, answers, feedback]);
   async function respond(value?: object) {
     if (working) return;
     setWorking(true);
@@ -87,6 +142,7 @@ export function StructuredDialog({ dialog, request }: { dialog: Dialog; request:
           修改意见
           <textarea
             value={feedback}
+            maxLength={8000}
             onChange={(e) => setFeedback(e.target.value)}
             disabled={working}
           />
@@ -185,6 +241,7 @@ export function StructuredDialog({ dialog, request }: { dialog: Dialog; request:
           自定义答案
           <textarea
             value={answer.custom}
+            maxLength={4000}
             disabled={working}
             onChange={(e) =>
               patch({

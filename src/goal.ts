@@ -30,7 +30,7 @@ export default function (pi: ExtensionAPI) {
   });
   pi.registerCommand("axiom-goal", {
     description:
-      "Arm a bounded goal for the next prompt: /axiom-goal <1-10 extra runs> <objective>; pause: /axiom-goal pause",
+      "Arm a bounded goal for the next prompt: /axiom-goal <1-10 extra runs> <objective>; pause: /axiom-goal pause; rearm: /axiom-goal resume",
     handler: async (args, ctx) => {
       const old = goal(ctx);
       if (args.trim() === "pause") {
@@ -38,6 +38,15 @@ export default function (pi: ExtensionAPI) {
         run = undefined;
         if (old?.phase === "armed") save({ ...old, phase: "paused" });
         ctx.ui.notify("Goal paused", "info");
+        return;
+      }
+      if (args.trim() === "resume") {
+        if (!old || old.phase !== "paused" || old.remaining < 1)
+          throw Error("No paused goal with remaining budget");
+        const next = { ...old, phase: "armed" as const };
+        save(next);
+        armed = next.id;
+        ctx.ui.notify("Goal rearmed for your next prompt", "info");
         return;
       }
       const m = /^([1-9]|10)\s+([\s\S]+)$/.exec(args.trim());

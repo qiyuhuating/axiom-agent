@@ -58,6 +58,7 @@ try{
  await capture(page,"slash-menu.png");
  const first=await options.first().innerText();
  await prompt.press('Enter');
+ await prompt.locator('[data-composer-command]').waitFor();
  assert.ok((await prompt.textContent()).startsWith('/'));
  assert.ok(first.length>1);
  await prompt.fill('@axiom-fixture');
@@ -72,8 +73,15 @@ try{
  await prompt.locator('[data-composer-chip]').waitFor({state:'detached'});
  await prompt.fill('');
  // Inject a test-only history response, never submit a model prompt or credential.
- await page.route("**/api/messages",route=>route.fulfill({json:[{role:"user",content:[{type:"text",text:"fixture ghp_"+"A".repeat(36)}]},{role:"toolResult",toolCallId:"delivery-fixture",toolName:"present_files",content:[{type:"text",text:"Presented to user: axiom-fixture.txt"}],details:{kind:"axiom-deliverables-v1",files:[{path:"axiom-fixture.txt",size:20}]}}]}));
+ await page.route("**/api/messages",route=>route.fulfill({json:[{role:"assistant",content:[{type:"text",text:"Fixture quote to reference"}]},{role:"user",content:[{type:"text",text:"fixture ghp_"+"A".repeat(36)}]},{role:"toolResult",toolCallId:"delivery-fixture",toolName:"present_files",content:[{type:"text",text:"Presented to user: axiom-fixture.txt"}],details:{kind:"axiom-deliverables-v1",files:[{path:"axiom-fixture.txt",size:20}]}}]}));
  await page.reload();
+ const reply=page.locator("#transcript article.assistant").first();
+ await reply.hover();
+ await reply.getByRole("button",{name:"引用",exact:true}).click();
+ await prompt.locator("[data-composer-quote]").waitFor();
+ assert.match(await prompt.locator("[data-composer-quote]").innerText(),/Fixture quote to reference/);
+ await prompt.getByRole("button",{name:"移除引用"}).click();
+ await prompt.locator("[data-composer-quote]").waitFor({state:"detached"});
  const fixture=page.locator("#transcript article.user");
  await fixture.getByRole("button",{name:"显示凭据"}).waitFor();
  assert.ok(!(await fixture.innerText()).includes("A".repeat(36)));
@@ -84,6 +92,25 @@ try{
  await page.getByRole("button",{name:"预览 axiom-fixture.txt"}).click();
  await page.locator(".inspector").waitFor();
  await page.unroute("**/api/messages");await page.reload();
+ // Browser-only recovery fixture: no new model run or permission request.
+ const request={kind:"questions",questions:[{id:"q1",question:"Fixture choice",options:[{label:"Pick A"}]},{id:"q2",question:"Fixture custom"}]};
+ const dialog={id:"fixture-question-draft",method:"editor",title:"Axiom structured interaction v1",prefill:JSON.stringify(request)};
+ let live=[dialog], response;
+ await page.route("**/api/dialogs",route=>route.fulfill({json:live}));
+ await page.route("**/api/ui-response",route=>{response=route.request().postDataJSON();live=[];return route.fulfill({json:{ok:true}});});
+ await page.reload();
+ await page.getByRole("button",{name:/Pick A/}).click();
+ await page.getByRole("button",{name:"下一题"}).click();
+ await page.getByLabel("自定义答案").fill("draft survives reload");
+ await page.reload();
+ await page.getByText("Fixture custom",{exact:true}).waitFor();
+ assert.equal(await page.getByLabel("自定义答案").inputValue(),"draft survives reload");
+ await page.getByRole("button",{name:"提交答案"}).click();
+ await page.getByText("Fixture custom",{exact:true}).waitFor({state:"detached"});
+ assert.deepEqual(JSON.parse(response.value).answers.map(a=>({id:a.id,selected:a.selected,custom:a.custom})),[{id:"q1",selected:["Pick A"],custom:""},{id:"q2",selected:[],custom:"draft survives reload"}]);
+ assert.equal(await page.evaluate(()=>sessionStorage.getItem("axiom.question-draft.v1:fixture-question-draft")),null);
+ await page.unroute("**/api/dialogs");await page.unroute("**/api/ui-response");
+ await page.reload();
  await capture(page,'composer-features.png');
  assert.deepEqual(errors,[]);console.log("HARNESS_UI_RENDER_PASS",JSON.stringify(a));
 }finally{await browser.close();}

@@ -8,6 +8,8 @@
  * All $-functions must run inside `editor.read()` / `editor.update()`.
  */
 import { $isReferenceChipNode } from "./chip-node.tsx";
+import { $isCommandChipNode } from "./command-chip-node.tsx";
+import { $isQuoteNode } from "./QuoteNode.tsx";
 import type { ElementNode, LexicalNode, NodeKey, Point } from 'lexical'
 import {
   $getRoot, $getSelection, $isElementNode, $isLineBreakNode, $isRangeSelection, $isTextNode,
@@ -78,7 +80,7 @@ export function $composerLayout(): ComposerLayout {
     const kids = element.getChildren()
     children.set(element.getKey(), kids.map(kid => kid.getKey()))
     for (const kid of kids) {
-      if ($isReferenceChipNode(kid)) {
+      if ($isReferenceChipNode(kid) || $isCommandChipNode(kid) || $isQuoteNode(kid)) {
         pushLeaf('chip',kid,ATOMIC_CHAR,kid.getTextContent())
       } else if ($isTextNode(kid)) {
         const text = kid.getTextContent()

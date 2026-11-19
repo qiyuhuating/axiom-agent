@@ -16,3 +16,5 @@ Sidebar alignment: original SidebarRoot.module.css, Rows.module.css, WorkspaceBr
 Composer/credential port: imported ui-secret-mask scanner, tables, masks and SecretText with type-only local seams; ui-input-trigger trigger detection and file-reference grammar with local type imports; original menu, InputBar and HeroShell CSS. See UI-ALIGNMENT.md for scope.
 
 Reference-chip port: original ReferenceChip, ReferenceChip.module.css, chip-node and DecoratorPortals from the pinned revision; local icon/type seams and Pi-backed file mention serialization. Existing draft projection and span mapping now preserve atomic file decorations. Quote/command chip contracts remain distinct and unported.
+
+Command/quote port: original CommandChip, command-chip-node, command-chip-selection, QuoteNode, QuotePreview, HoverCard, HoverCardGroup, pointer grace, overlay inset and quote-text formatting from the same pinned revision. Local type/icon seams connect Pi command serialization and selected transcript excerpts to the existing Lexical projection.
