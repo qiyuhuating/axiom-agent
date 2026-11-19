@@ -11,7 +11,7 @@ import {javascript} from '@codemirror/lang-javascript';
 import {json as jsonLanguage} from '@codemirror/lang-json';
 import {python} from '@codemirror/lang-python';
 import {markdown as markdownLanguage} from '@codemirror/lang-markdown';
-import MarkdownIt from 'markdown-it';
+import MarkdownIt from './markdown.ts';
 const diffLabels={codeLabel:'Diff',wrapLabel:'自动换行',unwrapLabel:'取消换行',copy:'复制',copied:'已复制',collapseAria:'折叠差异',expandAria:(n:number)=>'展开 '+n+' 行',collapse:'收起',expand:(n:number)=>'展开 '+n+' 行'};
 const md=new MarkdownIt({html:false,linkify:true}).disable('image');
 function language(path:string){if(/\.[cm]?[jt]sx?$/i.test(path))return javascript({typescript:/tsx?$/i.test(path),jsx:/[jt]sx$/i.test(path)});if(/\.json$/i.test(path))return jsonLanguage();if(/\.py$/i.test(path))return python();if(/\.md$/i.test(path))return markdownLanguage();return [];}

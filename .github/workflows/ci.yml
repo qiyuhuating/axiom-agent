@@ -17,3 +17,25 @@ jobs:
       - run: npm ci
       - run: npm run build:ui
       - run: npm test
+      - name: Build Windows x64 NSIS installer
+        run: npm run desktop:build
+      - run: node scripts/check-desktop-runtime.mjs
+      - name: Verify installer and generate checksums
+        shell: pwsh
+        run: |
+          $installers = @(Get-ChildItem src-tauri/target/release/bundle/nsis -File -Filter '*.exe')
+          if ($installers.Count -eq 0) { throw 'No NSIS installer was produced' }
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $checksums = foreach ($installer in $installers) {
+            Copy-Item -LiteralPath $installer.FullName -Destination dist
+            $hash = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            Write-Host "$($installer.Name): $($installer.Length) bytes"
+            "$hash  $($installer.Name)"
+          }
+          $checksums | Set-Content dist/SHA256SUMS.txt -Encoding utf8
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: axiom-windows-x64-nsis
+          path: dist/
+          if-no-files-found: error

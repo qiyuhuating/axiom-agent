@@ -8,7 +8,7 @@ import {permission,setPermission,inventory,resourceAction,providers,providerActi
 import {proxyRuntime,ensureRuntime} from './runtime-client.mjs';
 
 const agent = new Agent();
-const assets = new Map([['/', ['index.html','text/html']], ['/app.js',['app.js','text/javascript']], ['/style.css',['style.css','text/css']], ['/markdown.mjs',['../node_modules/markdown-it/dist/browser/markdown-it.esm.min.mjs','text/javascript']], ['/dsh-ui.js',['dsh-ui.js','text/javascript']], ['/dsh-ui.css',['dsh-ui.css','text/css']], ['/workbench.js',['workbench.js','text/javascript']], ['/workbench.css',['workbench.css','text/css']]]);
+const assets = new Map([['/', ['index.html','text/html']], ['/app.js',['app.js','text/javascript']], ['/style.css',['style.css','text/css']], ['/markdown.js',['markdown.js','text/javascript']], ['/dsh-ui.js',['dsh-ui.js','text/javascript']], ['/dsh-ui.css',['dsh-ui.css','text/css']], ['/workbench.js',['workbench.js','text/javascript']], ['/workbench.css',['workbench.css','text/css']]]);
 function json(res, data, status = 200) {
   res.writeHead(status, {'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}); res.end(JSON.stringify(data));
 }
@@ -87,6 +87,7 @@ const server = createServer(async (req, res) => {
     return json(res,{error:'Not found'},404);
   } catch (error) { if (!res.headersSent) json(res,{error:error.message},400); else res.destroy(); }
 });
-server.listen(config.port,'127.0.0.1',()=>{console.log('Axiom Agent http://127.0.0.1:'+config.port);void ensureRuntime().catch(e=>console.error(e.message));});
+server.listen(config.port,'127.0.0.1',()=>{config.port=server.address().port;console.log('AXIOM_READY '+config.port);console.log('Axiom Agent http://127.0.0.1:'+config.port);void ensureRuntime().catch(e=>console.error(e.message));});
 async function shutdown() { await agent.close(); server.close(); process.exit(0); }
 process.on('SIGINT',shutdown); process.on('SIGTERM',shutdown);
+if(process.env.AXIOM_DESKTOP==='1'){process.stdin.resume();process.stdin.once('end',shutdown);}

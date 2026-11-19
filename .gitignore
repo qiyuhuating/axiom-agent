@@ -24,3 +24,8 @@ public/dsh-ui.css
 public/workbench.js
 public/workbench.css
 public/chunks/
+public/markdown.js
+.desktop-runtime/
+.desktop-cache/
+src-tauri/target/
+src-tauri/gen/

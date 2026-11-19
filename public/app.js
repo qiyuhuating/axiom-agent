@@ -1,4 +1,4 @@
-import MarkdownIt from '/markdown.mjs';
+import MarkdownIt from '/markdown.js';
 import {renderSessions,controlIcon,layout} from '/dsh-ui.js';
 import {initWorkbench,extensionEvent,syncDialogs,attachmentPayload,clearAttachments} from '/workbench.js';
 const markdown = new MarkdownIt({ html:false, linkify:true }).disable('image');

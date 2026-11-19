@@ -1,0 +1,19 @@
+[package]
+name = "axiom-desktop"
+version = "0.5.0"
+edition = "2021"
+license = "MIT"
+
+[build-dependencies]
+tauri-build = "=2.7.4"
+
+[dependencies]
+tauri = "=2.12.5"
+tauri-plugin-single-instance = "=2.5.4"
+serde_json = "1"
+dunce = "=1.0.5"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
