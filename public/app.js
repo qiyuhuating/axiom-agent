@@ -1,5 +1,5 @@
 import MarkdownIt from '/markdown.js';
-import {renderSessions,controlIcon,layout} from '/dsh-ui.js';
+import {renderSessions,controlIcon,layout,initAppearance} from '/dsh-ui.js';
 import {initWorkbench,extensionEvent,syncDialogs,attachmentPayload,clearAttachments} from '/workbench.js';
 const markdown = new MarkdownIt({ html:false, linkify:true }).disable('image');
 const $ = id => document.getElementById(id);
@@ -15,7 +15,7 @@ async function changeSession(kind,value){
   finally { try{await refresh();}finally{changing=false;setBusy(busy);} }
   await loadOptions();
 }
-layout();window.addEventListener('resize',layout);
+initAppearance();layout();window.addEventListener('resize',layout);
 controlIcon('new','new','新建会话');controlIcon('stop','stop','停止');controlIcon('trace-heading','trace','执行轨迹');
 const api = async (path, data) => {
   const response = await fetch('/api/'+path, data === undefined ? {} : {method:'POST',headers:{'Content-Type':'application/json','X-Axiom-Client':'1'},body:JSON.stringify(data)});

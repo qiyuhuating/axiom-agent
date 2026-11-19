@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { layout, toggleWorkbench } from "./dsh-ui.tsx";
 import { api, dirtyTabs, errorBox, Header, msg } from "./panel-shared.tsx";
 
 const Editor = React.lazy(() => import("./editor.tsx"));
@@ -36,6 +37,8 @@ import { Modal } from "../vendor/dsh/primitives/Modal.tsx";
 import "@xterm/xterm/css/xterm.css";
 import "../vendor/dsh/primitives/DiffBlock.module.css";
 import "../vendor/dsh/primitives/CodeCard.module.css";
+import guideCss from "../vendor/dsh/guide/GuideBody.module.css";
+import { CompassGlyph } from "../vendor/dsh/guide/GuideTitle.tsx";
 
 const jobAction = (action: string, value: unknown) => api("job-action", { action, value });
 const icons = {
@@ -982,25 +985,29 @@ function Jobs() {
 }
 function Guide() {
   return (
-    <div className="wb-guide">
+    <div className={guideCss.guide}>
+      <span className={guideCss.hero}>
+        <CompassGlyph size={56} />
+      </span>
       {Object.entries(names)
-        .filter(([k]) => k !== "guide")
+        .filter(([kind]) => kind !== "guide")
         .map(([kind, label]) => {
           const Icon = icons[kind as keyof typeof icons];
           return (
-            <Button
-              variant="outline"
-              key={kind}
-              icon={<Icon size={17} />}
-              onClick={() => open(kind)}
-            >
-              {label}
-            </Button>
+            <button type="button" key={kind} className={guideCss.entry} onClick={() => open(kind)}>
+              <span className={guideCss.entryIcon}>
+                <Icon size={22} />
+              </span>
+              <span className={guideCss.entryText}>
+                <span className={guideCss.entryTitle}>{label}</span>
+              </span>
+            </button>
           );
         })}
     </div>
   );
 }
+
 function renderTab(tab: any) {
   switch (tab.kind) {
     case "files":
@@ -1057,6 +1064,7 @@ function Workbench() {
     const next = !wide;
     setWide(next);
     document.body.classList.toggle("workbench-wide", next);
+    layout();
   }
   return (
     <div className="wb-shell">
@@ -1294,6 +1302,5 @@ export function initWorkbench() {
   const input = document.getElementById("attach-input") as HTMLInputElement;
   input.onchange = () => void selectFiles(input);
   document.getElementById("attach-button")!.onclick = () => input.click();
-  document.getElementById("show-workbench")!.onclick = () =>
-    document.body.classList.toggle("workbench-mobile");
+  document.getElementById("show-workbench")!.onclick = toggleWorkbench;
 }

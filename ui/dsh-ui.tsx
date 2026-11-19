@@ -1,10 +1,30 @@
-import { Activity, ArrowUp, MessageSquare, PanelLeft, Plus, Square, Trash2 } from "lucide-react";
+import {
+  Activity,
+  ArrowUp,
+  MessageSquare,
+  PanelLeft,
+  PanelRight,
+  Paperclip,
+  Plus,
+  Square,
+  SunMoon,
+  Trash2,
+} from "lucide-react";
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
-import { computeColumns, SIDEBAR_DEFAULT } from "../vendor/dsh/layout/columns.ts";
+import {
+  computeColumns,
+  RIGHTBAR_DEFAULT_RATIO,
+  SIDEBAR_AUTO_COLLAPSE,
+  SIDEBAR_DEFAULT,
+  SIDEBAR_DRAWER_BREAKPOINT,
+} from "../vendor/dsh/layout/columns.ts";
 import { Button } from "../vendor/dsh/primitives/Button.tsx";
 import { Modal } from "../vendor/dsh/primitives/Modal.tsx";
 import "../vendor/dsh/theme/base.css";
+import "../vendor/dsh/theme/design-platform.css";
+import "../vendor/dsh/theme/scrollbar.css";
+import "../vendor/dsh/theme/focus.css";
 
 type Session = { id: string; name?: string; firstMessage?: string };
 type Props = {
@@ -113,7 +133,7 @@ export function renderSessions(props: Props) {
 const iconRoots = new Map<string, ReturnType<typeof createRoot>>();
 export function controlIcon(
   id: string,
-  kind: "new" | "send" | "stop" | "trace" | "sidebar",
+  kind: "new" | "send" | "stop" | "trace" | "sidebar" | "workbench" | "theme" | "attach",
   label: string,
 ) {
   const el = document.getElementById(id)!;
@@ -129,6 +149,9 @@ export function controlIcon(
     stop: Square,
     trace: Activity,
     sidebar: PanelLeft,
+    workbench: PanelRight,
+    theme: SunMoon,
+    attach: Paperclip,
   }[kind];
   root.render(
     <>
@@ -137,14 +160,73 @@ export function controlIcon(
     </>,
   );
 }
+let sidebarPreference: boolean | undefined;
+let workbenchOpen = false;
 export function layout() {
   const w = window.innerWidth;
-  if (w < 650) {
-    document.body.style.removeProperty("--sidebar-width");
-    document.body.style.removeProperty("--trace-width");
-    return;
-  }
-  const c = computeColumns(w, SIDEBAR_DEFAULT, w >= 1000 ? 330 : 0);
+  const drawer = w < SIDEBAR_DRAWER_BREAKPOINT;
+  const collapsed = sidebarPreference ?? w < SIDEBAR_AUTO_COLLAPSE;
+  const c = computeColumns(
+    w,
+    collapsed ? 0 : SIDEBAR_DEFAULT,
+    workbenchOpen
+      ? w * (document.body.classList.contains("workbench-wide") ? 0.65 : RIGHTBAR_DEFAULT_RATIO)
+      : 0,
+  );
+  if (!drawer) document.body.classList.remove("sidebar-drawer");
+  document.body.classList.toggle("sidebar-collapsed", collapsed && !drawer);
+  document.body.classList.toggle("workbench-open", workbenchOpen);
+  document.body.classList.toggle(
+    "workbench-overlay",
+    workbenchOpen && (drawer || c.rightbar === 0),
+  );
   document.body.style.setProperty("--sidebar-width", c.sidebar + "px");
   document.body.style.setProperty("--trace-width", c.rightbar + "px");
+  document.getElementById("show-workbench")?.setAttribute("aria-expanded", String(workbenchOpen));
+}
+export function toggleWorkbench() {
+  workbenchOpen = !workbenchOpen;
+  layout();
+}
+export function initAppearance() {
+  const media = matchMedia("(prefers-color-scheme: dark)");
+  const apply = () => {
+    const mode = localStorage.getItem("axiom.appearance") || "system";
+    document.body.toggleAttribute(
+      "data-ds-dark-theme",
+      mode === "dark" || (mode === "system" && media.matches),
+    );
+    document.dispatchEvent(new Event("axiom:theme"));
+  };
+  media.addEventListener("change", apply);
+  apply();
+  controlIcon("theme-toggle", "theme", "");
+  controlIcon("sidebar-toggle", "sidebar", "");
+  controlIcon("sidebar-open", "sidebar", "");
+  controlIcon("show-workbench", "workbench", "工作台");
+  controlIcon("attach-button", "attach", "附件");
+  document.getElementById("theme-toggle")!.onclick = () => {
+    const dark = document.body.hasAttribute("data-ds-dark-theme");
+    localStorage.setItem("axiom.appearance", dark ? "light" : "dark");
+    apply();
+  };
+  document.getElementById("sidebar-toggle")!.onclick = () => {
+    if (window.innerWidth < SIDEBAR_DRAWER_BREAKPOINT)
+      document.body.classList.remove("sidebar-drawer");
+    else {
+      sidebarPreference = true;
+      layout();
+    }
+  };
+  document.getElementById("sidebar-open")!.onclick = () => {
+    if (window.innerWidth < SIDEBAR_DRAWER_BREAKPOINT)
+      document.body.classList.toggle("sidebar-drawer");
+    else {
+      sidebarPreference = false;
+      layout();
+    }
+  };
+  document
+    .getElementById("sessions")!
+    .addEventListener("click", () => document.body.classList.remove("sidebar-drawer"));
 }

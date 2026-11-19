@@ -2,6 +2,20 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import React, { useEffect, useRef, useState } from "react";
 import { api, errorBox, Header, msg, terminalAction } from "./panel-shared.tsx";
+
+function terminalTheme() {
+  const style = getComputedStyle(document.body);
+  const dark = document.body.hasAttribute("data-ds-dark-theme");
+  return {
+    background: style.getPropertyValue("--bg").trim(),
+    foreground: style.getPropertyValue("--ink").trim(),
+    cursor: style.getPropertyValue("--ink").trim(),
+    selectionBackground: dark ? "#43454a" : "#d3e2ff",
+    red: dark ? "#f25a5a" : "#dc2626",
+    green: dark ? "#4ed17e" : "#15803d",
+    blue: dark ? "#7aaaff" : "#2563eb",
+  };
+}
 export default function TerminalView() {
   const node = useRef<HTMLDivElement>(null),
     [error, setError] = useState(""),
@@ -28,11 +42,7 @@ export default function TerminalView() {
       fontFamily: "Consolas, monospace",
       fontSize: 13,
       scrollback: 2000,
-      theme: {
-        background: "#15171a",
-        foreground: "#e5e9ed",
-        cursor: "#b2e1cc",
-      },
+      theme: terminalTheme(),
       cursorBlink: true,
       allowProposedApi: false,
       disableStdin: true,
@@ -40,6 +50,10 @@ export default function TerminalView() {
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(node.current!);
+    const applyTheme = () => {
+      term.options.theme = terminalTheme();
+    };
+    document.addEventListener("axiom:theme", applyTheme);
     // Preserve keystroke order across asynchronous HTTP requests. Never retry
     // an ambiguous write; discard pending input on failure and surface it.
     let pendingInput = "";
@@ -140,6 +154,7 @@ export default function TerminalView() {
       observer?.disconnect();
       eventSource?.close();
       input.dispose();
+      document.removeEventListener("axiom:theme", applyTheme);
       term.dispose();
     };
   }, [selected]);

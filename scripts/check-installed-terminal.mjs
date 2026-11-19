@@ -11,6 +11,8 @@ try{
  const page=browser.contexts().flatMap(c=>c.pages()).find(p=>p.url().startsWith(base));
  assert.ok(page,'WebView2 page missing');
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ const openWorkbench=async()=>{if(!(await page.locator(".inspector").isVisible()))await page.locator("#show-workbench").click();};
+ await openWorkbench();
  await page.getByTitle('\u7ec8\u7aef',{exact:true}).click({timeout:20000});
  const panel=page.locator('.wb-panel').filter({has:page.locator('.wb-terminal')});
  await panel.getByRole('button',{name:'\u65b0\u5efa',exact:true}).click();
@@ -23,6 +25,7 @@ try{
  console.log('WEBVIEW_INPUT_UTF8_OK');
  const records=await (await page.request.get(base+'/api/terminals')).json();assert.equal(records.length,1);
  await page.reload();
+ await openWorkbench();
  const restore=page.getByRole('button',{name:new RegExp(records[0].id.slice(0,8))});
  try{await restore.waitFor({timeout:3000});}catch{await page.getByTitle('\u7ec8\u7aef',{exact:true}).click({timeout:20000});}
  await restore.click({timeout:20000});
