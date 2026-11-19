@@ -4,7 +4,6 @@ use std::os::windows::process::CommandExt;
 use std::{
     fs::{self, OpenOptions},
     io::{BufRead, BufReader},
-    path::PathBuf,
     process::{Child, Command, Stdio},
     sync::{mpsc, Mutex},
     thread,
@@ -29,12 +28,17 @@ fn stop_host(child: &mut Child) {
 }
 
 fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    let mut runtime = app.path().resource_dir()?.join("runtime");
+    // Node cannot resolve Win32 verbatim paths (e.g. \\?\D:\\...).
+    let runtime = app.path().resource_dir()?.join("runtime");
     #[cfg(debug_assertions)]
-    if !runtime.join("bin/node.exe").is_file() {
-        runtime = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.desktop-runtime");
-    }
+    let runtime = if runtime.join("bin/node.exe").is_file() {
+        runtime
+    } else {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.desktop-runtime")
+    };
+    let runtime = dunce::simplified(&runtime).to_owned();
     let data = app.path().app_local_data_dir()?;
+    let data = dunce::simplified(&data).to_owned();
     fs::create_dir_all(&data)?;
     let config = data.join("axiom.config.json");
     if !config.exists() {
