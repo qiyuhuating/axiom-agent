@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { decodeRequest } from "../src/interaction-protocol.mjs";
 import { TeamOverview } from "./harness-features.tsx";
 import { api, dirtyTabs, errorBox, Header, msg } from "./panel-shared.tsx";
 import {
@@ -10,6 +11,7 @@ import {
   useProjection,
 } from "./projection.ts";
 import { layoutActions } from "./shell-layout.ts";
+import { StructuredDialog } from "./structured-dialog.tsx";
 
 const Editor = React.lazy(() => import("./editor.tsx"));
 const TerminalView = React.lazy(() => import("./terminal.tsx"));
@@ -675,13 +677,22 @@ function Resources() {
               </small>
             </span>
             {s.scope === "project" && (
-              <Button
-                size="sm"
-                disabled={working}
-                onClick={() => void execute("mcp-remove", { name: s.name })}
-              >
-                移除
-              </Button>
+              <>
+                <Button
+                  size="sm"
+                  disabled={working}
+                  onClick={() => void execute("mcp-toggle", { name: s.name })}
+                >
+                  {s.enabled ? "停用" : "启用"}
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={working}
+                  onClick={() => void execute("mcp-remove", { name: s.name })}
+                >
+                  移除
+                </Button>
+              </>
             )}
           </div>
         ))}
@@ -749,13 +760,33 @@ function Resources() {
               </div>
             </div>
             {p.scope === "project" && (
-              <Button
-                size="sm"
-                disabled={working}
-                onClick={() => void execute("remove", { source: p.source })}
-              >
-                移除
-              </Button>
+              <>
+                <Button
+                  size="sm"
+                  disabled={working}
+                  onClick={() =>
+                    void execute(p.disabled ? "package-enable" : "package-disable", {
+                      source: p.source,
+                    })
+                  }
+                >
+                  {p.disabled ? "启用" : "停用"}
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={working || !/^(npm:|git:)/.test(p.source)}
+                  onClick={() => void execute("package-update", { source: p.source })}
+                >
+                  更新
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={working}
+                  onClick={() => void execute("remove", { source: p.source })}
+                >
+                  移除
+                </Button>
+              </>
             )}
           </div>
         ))}
@@ -1220,6 +1251,27 @@ export function Workbench() {
   );
 }
 export function DialogView({ dialog }: { dialog: Dialog }) {
+  let request: ReturnType<typeof decodeRequest>;
+  try {
+    request = decodeRequest(dialog);
+  } catch {
+    return (
+      <PlainDialog
+        dialog={{
+          ...dialog,
+          prefill: "Invalid structured request",
+          title: "Invalid structured request",
+        }}
+      />
+    );
+  }
+  return request ? (
+    <StructuredDialog dialog={dialog} request={request} />
+  ) : (
+    <PlainDialog dialog={dialog} />
+  );
+}
+function PlainDialog({ dialog }: { dialog: Dialog }) {
   const [value, setValue] = useState(dialog.prefill || ""),
     [error, setError] = useState(""),
     [working, setWorking] = useState(false);

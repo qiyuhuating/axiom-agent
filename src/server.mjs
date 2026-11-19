@@ -81,6 +81,7 @@ const server = createServer(async (req, res) => {
       }
       if (path === "/api/health") return json(res, { ok: true });
       if (path === "/api/state") return json(res, await agent.state());
+      if (path === "/api/harness") return json(res, await agent.harnessState());
       if (path === "/api/messages") return json(res, await agent.messages());
       if (path === "/api/models") return json(res, await agent.models());
       if (path === "/api/levels") return json(res, await agent.levels());
@@ -154,8 +155,8 @@ const server = createServer(async (req, res) => {
         return json(res, await providerAction(await body(req)));
       }
       if (path === "/api/resource-action") {
-        if (agent.busy) throw Error("Stop the agent before changing resources");
-        return json(res, await resourceAction(await body(req)));
+        const value = await body(req);
+        return json(res, await agent.exclusiveResourceChange(() => resourceAction(value)));
       }
       if (["/api/terminal-action", "/api/job-action"].includes(path))
         return await proxyRuntime(req, res, await body(req));

@@ -2,6 +2,8 @@ import { unlink } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { config, root } from "./config.mjs";
+import { projectHarness } from "./harness-state.mjs";
+import { decodeRequest, validateAnswer } from "./interaction-protocol.mjs";
 import { PiClient } from "./pi-client.mjs";
 
 export class Agent {
@@ -46,6 +48,12 @@ export class Agent {
         resolve(root, "src/providers.ts"),
         "--extension",
         resolve(root, "src/deliverables.ts"),
+        "--extension",
+        resolve(root, "src/interactions.ts"),
+        "--extension",
+        resolve(root, "src/goal.ts"),
+        "--extension",
+        resolve(root, "src/file-observation.ts"),
       ],
       env: {
         AXIOM_MAX_OUTPUT_TOKENS: String(config.maxOutputTokens ?? ""),
@@ -130,6 +138,15 @@ export class Agent {
       workspace: config.workspace,
     };
   }
+  async harnessState() {
+    await this.start();
+    const client = this.#client;
+    const state = await client.getState();
+    const tree = await client.getTree();
+    if (client !== this.#client || state.sessionId !== (await client.getState()).sessionId)
+      throw Error("Session changed while reading Harness state");
+    return { sessionId: state.sessionId, ...projectHarness(tree) };
+  }
   async messages() {
     await this.start();
     return (await this.#client.getMessages()).filter((m) => m.role !== "system");
@@ -198,6 +215,16 @@ export class Agent {
     await this.#client.abort();
     this.#busy = false;
     this.#emit({ type: "run_status", busy: false });
+  }
+  async exclusiveResourceChange(operation) {
+    if (this.#busy || this.#changing) throw Error("Stop the agent before changing resources");
+    this.#changing = true;
+    try {
+      return await operation();
+    } finally {
+      this.#changing = false;
+      this.#emit({ type: "state_changed", busy: this.#busy });
+    }
   }
   async change(action, value) {
     await this.start();
@@ -290,6 +317,8 @@ export class Agent {
     const dialog = this.#dialogs.get(id);
     if (!dialog) throw Error("Interaction expired or already answered");
     if (!cancelled) {
+      const request = decodeRequest(dialog);
+      if (request) validateAnswer(request, value);
       if (dialog.method === "confirm" && typeof confirmed !== "boolean")
         throw Error("Confirmation required");
       if (dialog.method === "select" && !dialog.options?.includes(value))

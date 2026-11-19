@@ -103,3 +103,10 @@ export function $replaceDetectSpanWithText(span: DetectSpan, text: string): bool
   else selection.insertText(text)
   return true
 }
+
+/** Insert atomic decorators through the original detect-space mapping. */
+export function $replaceDetectSpanWithNodes(span:DetectSpan,nodes:readonly LexicalNode[]):boolean {
+ const selection=selectSpan($composerLayout(),span);
+ if(selection===null)return false;
+ selection.insertNodes([...nodes]);return true;
+}

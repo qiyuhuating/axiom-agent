@@ -64,7 +64,12 @@ try{
  await page.getByRole('option').filter({hasText:'axiom-fixture.txt'}).waitFor();
  await capture(page,'file-reference.png');
  await prompt.press('Tab');
- assert.equal(await prompt.textContent(),'@axiom-fixture.txt ');
+ await prompt.locator('[data-composer-chip=workspace-file]').waitFor();
+ assert.equal(await prompt.locator('[data-composer-chip=workspace-file]').innerText(),'axiom-fixture.txt');
+ await prompt.press('End');
+ await prompt.press('Backspace');
+ await prompt.press('Backspace');
+ await prompt.locator('[data-composer-chip]').waitFor({state:'detached'});
  await prompt.fill('');
  // Inject a test-only history response, never submit a model prompt or credential.
  await page.route("**/api/messages",route=>route.fulfill({json:[{role:"user",content:[{type:"text",text:"fixture ghp_"+"A".repeat(36)}]},{role:"toolResult",toolCallId:"delivery-fixture",toolName:"present_files",content:[{type:"text",text:"Presented to user: axiom-fixture.txt"}],details:{kind:"axiom-deliverables-v1",files:[{path:"axiom-fixture.txt",size:20}]}}]}));

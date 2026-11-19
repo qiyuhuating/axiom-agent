@@ -19,7 +19,13 @@ import settingsCss from "../vendor/dsh/sidebar/SettingsRoot.module.css";
 import sidebarCss from "../vendor/dsh/sidebar/SidebarRoot.module.css";
 import { DraftEditor } from "./draft-editor.tsx";
 import { SessionList } from "./dsh-ui.tsx";
-import { DeliverableCards, PlanDock, TraceLedger } from "./harness-features.tsx";
+import {
+  DeliverableCards,
+  HarnessModeDock,
+  ObservedChanges,
+  PlanDock,
+  TraceLedger,
+} from "./harness-features.tsx";
 import { api } from "./panel-shared.tsx";
 import {
   action,
@@ -270,6 +276,7 @@ function App() {
               </article>
             );
           })}
+          <ObservedChanges tools={p.tools} />
           <DeliverableCards tools={p.tools} />
           {p.stream && (
             <article className="assistant">
@@ -278,6 +285,7 @@ function App() {
           )}
         </section>
         <div className="composer">
+          <HarnessModeDock />
           <PlanDock key={p.state?.sessionId} />
           <div id="error" role="alert">
             {p.error}

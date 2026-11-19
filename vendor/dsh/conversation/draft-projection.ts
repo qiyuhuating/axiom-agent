@@ -7,6 +7,7 @@
  * text view here — submit serializes chip nodes through their owner codec.
  * All $-functions must run inside `editor.read()` / `editor.update()`.
  */
+import { $isReferenceChipNode } from "./chip-node.tsx";
 import type { ElementNode, LexicalNode, NodeKey, Point } from 'lexical'
 import {
   $getRoot, $getSelection, $isElementNode, $isLineBreakNode, $isRangeSelection, $isTextNode,
@@ -77,7 +78,9 @@ export function $composerLayout(): ComposerLayout {
     const kids = element.getChildren()
     children.set(element.getKey(), kids.map(kid => kid.getKey()))
     for (const kid of kids) {
-      if ($isTextNode(kid)) {
+      if ($isReferenceChipNode(kid)) {
+        pushLeaf('chip',kid,ATOMIC_CHAR,kid.getTextContent())
+      } else if ($isTextNode(kid)) {
         const text = kid.getTextContent()
         pushLeaf('text', kid, text, text)
       } else if ($isLineBreakNode(kid)) {
@@ -178,5 +181,5 @@ export function $projectDraft(){
   const anchor=$detectOffsetOfPoint(layout,selection.anchor), focus=$detectOffsetOfPoint(layout,selection.focus);
   if(anchor!==null&&focus!==null)range={start:Math.min(anchor,focus),end:Math.max(anchor,focus)};
  }
- return {text:layout.clipboardText, range, caret:range!==null&&range.start===range.end?range.start:null};
+ return {text:layout.clipboardText, detectText:layout.detectText, range, caret:range!==null&&range.start===range.end?range.start:null};
 }

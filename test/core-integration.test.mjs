@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { request } from "node:http";
 import { tmpdir } from "node:os";
@@ -110,6 +110,29 @@ test("HTTP host: authenticated runtime, restart, extension confirmation and stal
       await until(()=>events.some(e=>e.type==="extension_ui_request"&&e.method==="notify"&&e.message===expected));
       assert.deepEqual(await get("dialogs"),[]);
     }
+    assert.equal((await get("harness")).planMode,false);
+    assert.ok((await post("action",{action:"prompt",value:"/axiom-plan on"})).ok);
+    assert.equal((await get("harness")).planMode,true);
+    assert.ok((await post("action",{action:"prompt",value:"/axiom-plan off"})).ok);
+    assert.equal((await get("harness")).planMode,false);
+    const piDir=join(f.workspace,".pi");
+    await mkdir(piDir,{recursive:true});
+    const source="npm:axiom-fixture-not-installed";
+    const settingsPath=join(piDir,"settings.json");
+    const mcpPath=join(piDir,"mcp.json");
+    const advanced={source:"npm:advanced-fixture",skills:["selected"]};
+    await writeFile(settingsPath,JSON.stringify({packages:[source,advanced]}));
+    await writeFile(mcpPath,JSON.stringify({mcpServers:{fixture:{url:"https://example.invalid/mcp"}}}));
+    const resource=async body=>{const res=await post("resource-action",body);assert.ok(res.ok,await res.clone().text());};
+    await resource({operation:"package-disable",source});
+    assert.equal(JSON.parse(await readFile(settingsPath,"utf8")).packages[0].autoload,false);
+    assert.equal((await post("resource-action",{operation:"package-disable",source:advanced.source})).status,400);
+    await resource({operation:"package-enable",source});
+    assert.deepEqual(JSON.parse(await readFile(settingsPath,"utf8")).packages,[source,advanced]);
+    await resource({operation:"mcp-toggle",name:"fixture"});
+    assert.equal(JSON.parse(await readFile(mcpPath,"utf8")).mcpServers.fixture.enabled,false);
+    await resource({operation:"mcp-toggle",name:"fixture"});
+    assert.equal(JSON.parse(await readFile(mcpPath,"utf8")).mcpServers.fixture.enabled,true);
     sse.abort();await eventTask;
   }finally{
     sse?.abort();

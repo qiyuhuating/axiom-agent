@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { ProjectTrustStore } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/trust-manager.js";
 import { config, root } from "./config.mjs";
+import { workspacePath } from "./workspace.mjs";
 
 const exec = promisify(execFile);
 const permissionPath = resolve(config.sessionDir, "permission.json");
@@ -57,6 +58,12 @@ export async function inventory() {
       ...(local.packages ?? []).map((p) => ({
         source: typeof p === "string" ? p : p.source,
         scope: "project",
+        disabled:
+          typeof p === "object" &&
+          p.autoload === false &&
+          ["extensions", "skills", "prompts", "themes"].every(
+            (key) => Array.isArray(p[key]) && p[key].length === 0,
+          ),
       })),
     ],
     servers: [...summarize(globalMcp, "global"), ...summarize(localMcp, "project")],
@@ -82,7 +89,67 @@ export async function resourceAction({
     };
   }
   let args;
-  if (operation === "install" || operation === "remove") {
+  if (["package-disable", "package-enable", "package-update"].includes(operation)) {
+    if (
+      typeof source !== "string" ||
+      !source.trim() ||
+      source.startsWith("-") ||
+      source.length > 1000
+    )
+      throw Error("Invalid package source");
+    // Read the same native project configuration Pi consumes. Never toggle a global package.
+    const path = await workspacePath(".pi/settings.json"),
+      settings = await readJson(path, {});
+    const packages = settings.packages ?? [];
+    const index = packages.findIndex((p) => (typeof p === "string" ? p : p.source) === source);
+    if (index < 0) throw Error("Package is not configured in this project");
+    const item = packages[index];
+    if (operation === "package-update") {
+      if (!/^(npm:|git:)/.test(source))
+        throw Error("Only installed npm/git sources are updateable");
+      const global = await readJson(resolve(getAgentDir(), "settings.json"), {});
+      if ((global.packages ?? []).some((p) => (typeof p === "string" ? p : p.source) === source))
+        throw Error("Source also exists globally; use Pi native package manager to choose scope");
+      args = ["update", "--extension", source, "--approve"];
+    } else {
+      const simple = typeof item === "string" || Object.keys(item).every((k) => k === "source");
+      const disabled =
+        typeof item === "object" &&
+        item.autoload === false &&
+        ["extensions", "skills", "prompts", "themes"].every(
+          (k) => Array.isArray(item[k]) && item[k].length === 0,
+        ) &&
+        Object.keys(item).every((k) =>
+          ["source", "autoload", "extensions", "skills", "prompts", "themes"].includes(k),
+        );
+      if (operation === "package-disable") {
+        if (!simple && !disabled)
+          throw Error("Package has custom resource filters; preserve them using Pi config");
+        packages[index] = {
+          source,
+          autoload: false,
+          extensions: [],
+          skills: [],
+          prompts: [],
+          themes: [],
+        };
+      } else {
+        if (!disabled) throw Error("Package does not have a reversible disabled configuration");
+        packages[index] = source;
+      }
+      await writeJson(path, { ...settings, packages });
+      return { message: "Project package configuration saved. Reload Pi to apply." };
+    }
+  } else if (operation === "mcp-toggle") {
+    if (!/^[A-Za-z0-9_-]+$/.test(name)) throw Error("Invalid MCP name");
+    const path = await workspacePath(".pi/mcp.json"),
+      settings = await readJson(path, {});
+    const servers = settings.mcpServers ?? {};
+    if (!Object.hasOwn(servers, name)) throw Error("Project MCP server not found");
+    servers[name] = { ...servers[name], enabled: servers[name].enabled === false };
+    await writeJson(path, { ...settings, mcpServers: servers });
+    return { message: "Project MCP configuration saved. Reload Pi to apply." };
+  } else if (operation === "install" || operation === "remove") {
     if (
       typeof source !== "string" ||
       !source.trim() ||

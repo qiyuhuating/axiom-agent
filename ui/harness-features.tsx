@@ -11,10 +11,14 @@ import { Button } from "../vendor/dsh/primitives/Button.tsx";
 import { Modal } from "../vendor/dsh/primitives/Modal.tsx";
 import { StateDot } from "../vendor/dsh/primitives/StateDot.tsx";
 import { maskCredentials } from "./credential-mask.ts";
+import { api } from "./panel-shared.tsx";
 import {
+  action,
   appendDraft,
   type Job,
   loadJobs,
+  refresh,
+  run,
   setError,
   type Tool,
   useProjection,
@@ -31,6 +35,69 @@ const t = (key: string, params?: Record<string, number>) =>
     "todo.progress.active": `进行中 ${params?.active}`,
     "todo.progress.pending": `待处理 ${params?.pending}`,
   })[key] ?? key;
+export function HarnessModeDock() {
+  const { harness, busy, syncing } = useProjection();
+  if (!harness) return null;
+  const g = harness.goal;
+  const command = (value: string) =>
+    void run(async () => {
+      await action("prompt", value);
+      await refresh();
+    });
+  return (
+    <div className="plan-dock">
+      <div className={goalCss.bar}>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy || syncing}
+          onClick={() => command(harness.planMode ? "/axiom-plan off" : "/axiom-plan on")}
+        >
+          {harness.planMode ? "退出计划模式" : "计划模式"}
+        </Button>
+        {g && (
+          <>
+            <span className={goalCss.objective} title={maskCredentials(g.objective)}>
+              {maskCredentials(g.objective)} ·{" "}
+              {g.phase === "completed"
+                ? "模型报告完成"
+                : g.phase === "exhausted"
+                  ? "预算用尽"
+                  : g.phase === "paused"
+                    ? "暂停"
+                    : "已设置"}{" "}
+              · 剩余 {g.remaining}
+            </span>
+            <Button
+              size="sm"
+              disabled={busy || syncing || g.phase !== "armed"}
+              onClick={() => command("/axiom-goal pause")}
+            >
+              暂停
+            </Button>
+          </>
+        )}
+        <Button
+          size="sm"
+          disabled={busy || syncing}
+          onClick={() => {
+            const objective = window.prompt("目标（仅在下一次主动发送任务后自动推进）");
+            if (!objective?.trim()) return;
+            const limit = window.prompt("额外自动推进轮数 1-10", "3");
+            if (
+              limit &&
+              /^(?:[1-9]|10)$/.test(limit) &&
+              window.confirm("允许 Pi 在下一次任务中额外推进 " + limit + " 轮？")
+            )
+              command("/axiom-goal " + limit + " " + objective.trim());
+          }}
+        >
+          设置目标
+        </Button>
+      </div>
+    </div>
+  );
+}
 export function PlanDock() {
   const { state, jobs } = useProjection();
   const [review, setReview] = useState(false);
@@ -139,6 +206,21 @@ export function TeamOverview({ jobs }: { jobs: Job[] }) {
             团队 {team.slice(0, 8)} · {members.filter((j) => j.status === "completed").length}/
             {members.length}
           </div>
+          {members.some((j) => ["queued", "running"].includes(j.status)) && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                if (window.confirm("取消整个团队的未完成任务？"))
+                  void run(async () => {
+                    await api("job-action", { action: "team-cancel", value: { id: team } });
+                    await loadJobs();
+                  });
+              }}
+            >
+              取消团队
+            </Button>
+          )}
           <ul className={teamCss.tasks}>
             {members.map((j) => (
               <li className={teamCss.task} key={j.id} data-expanded={expanded === j.id}>
@@ -241,6 +323,53 @@ export function TraceLedger({ tools, busy }: { tools: Tool[]; busy: boolean }) {
   );
 }
 
+export function ObservedChanges({ tools }: { tools: Tool[] }) {
+  const rows = tools.flatMap((tool) => {
+    const change = (
+      tool.details as
+        | {
+            axiomFileChange?: {
+              path: string;
+              kind: string;
+              before: string | null;
+              after: string;
+              source: string;
+            };
+          }
+        | undefined
+    )?.axiomFileChange;
+    return tool.finished &&
+      !tool.failed &&
+      change?.source === "direct-tool-observation" &&
+      typeof change.path === "string" &&
+      (change.before === null || typeof change.before === "string") &&
+      typeof change.after === "string" &&
+      ["created", "modified"].includes(change.kind)
+      ? [{ ...change, id: tool.id, turn: tool.turn }]
+      : [];
+  });
+  if (!rows.length) return null;
+  return (
+    <section aria-label="逐轮文件变更">
+      <h4>直接工具文件变更</h4>
+      {rows.map((row) => (
+        <div className="wb-list-row" key={row.id}>
+          <span>
+            {row.turn === undefined ? "当前回合" : "回合 " + row.turn} ·{" "}
+            {row.kind === "created" ? "创建" : "修改"} · {maskCredentials(row.path)}
+            <small>
+              {row.before?.slice(0, 12) ?? "不存在"} → {row.after.slice(0, 12)}
+            </small>
+          </span>
+          <Button size="sm" onClick={() => openDelivery(row.path)}>
+            预览当前文件
+          </Button>
+        </div>
+      ))}
+      <small>仅记录成功 write/edit 的前后摘要，不将 Shell 或外部文件修改推断为 Agent 所有。</small>
+    </section>
+  );
+}
 export function DeliverableCards({ tools }: { tools: Tool[] }) {
   const files = new Map<string, { path: string; size: number }>();
   for (const tool of tools) {

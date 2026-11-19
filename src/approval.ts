@@ -11,6 +11,9 @@ export default function (pi: ExtensionAPI) {
       "ls",
       "find",
       "grep",
+      ...(!process.env.AXIOM_TEAM_TOKEN && !process.env.AXIOM_WORKSPACE_ROOT
+        ? ["ask_user_question", "review_plan", "present_files", "goal_complete"]
+        : []),
       ...(process.env.AXIOM_TEAM_TOKEN ? ["team_board", "team_send", "team_inbox"] : []),
     ];
     const mutating = !allowed.includes(event.toolName);

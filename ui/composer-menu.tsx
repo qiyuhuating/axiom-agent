@@ -6,7 +6,7 @@ import css from "../vendor/dsh/input/MenuView.module.css";
 import { MenuSurface } from "../vendor/dsh/primitives/MenuSurface.tsx";
 import { api } from "./panel-shared.tsx";
 
-type Candidate = {
+export type Candidate = {
   name: string;
   insert: string;
   description?: string;
@@ -24,7 +24,14 @@ export function useComposerSuggestions({
   caret: number | null;
   enabled: boolean;
   sessionId: string | undefined;
-  apply: (start: number, end: number, text: string, expected: string, caret: number) => boolean;
+  apply: (
+    start: number,
+    end: number,
+    text: string,
+    expected: string,
+    caret: number,
+    candidate: Candidate,
+  ) => boolean;
 }) {
   const [items, setItems] = useState<Candidate[]>([]),
     [active, setActive] = useState(0),
@@ -117,6 +124,7 @@ export function useComposerSuggestions({
       item.insert + (item.kind === "directory" ? "" : " "),
       previous.text,
       previous.caret,
+      item,
     );
     close();
     if (ok && item.kind === "directory") closed.current = null;

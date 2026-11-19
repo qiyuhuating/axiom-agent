@@ -4,17 +4,32 @@ import {
   $addUpdateTag,
   $createParagraphNode,
   $createTextNode,
+  $getNearestNodeFromDOMNode,
   $getRoot,
+  $getSelection,
+  $isRangeSelection,
+  CLICK_COMMAND,
+  COMMAND_PRIORITY_LOW,
   createEditor,
   SKIP_DOM_SELECTION_TAG,
 } from "lexical";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ComposerContentEditable } from "../vendor/dsh/conversation/ComposerContentEditable.tsx";
+import {
+  $createReferenceChipNode,
+  $isReferenceChipNode,
+  ReferenceChipNode,
+} from "../vendor/dsh/conversation/chip-node.tsx";
+import { DecoratorPortals } from "../vendor/dsh/conversation/DecoratorPortals.tsx";
 import { $projectDraft } from "../vendor/dsh/conversation/draft-projection.ts";
 import inputCss from "../vendor/dsh/conversation/InputBar.module.css";
-import { $replaceDetectSpanWithText } from "../vendor/dsh/conversation/span-map.ts";
+import {
+  $replaceDetectSpanWithNodes,
+  $replaceDetectSpanWithText,
+} from "../vendor/dsh/conversation/span-map.ts";
 import { ComposerMenu, useComposerSuggestions } from "./composer-menu.tsx";
 import { setDraft } from "./projection.ts";
+import { openDelivery } from "./workbench.tsx";
 import "../vendor/dsh/conversation/composer-editor.module.css";
 export function DraftEditor({
   draft,
@@ -31,14 +46,20 @@ export function DraftEditor({
     () =>
       createEditor({
         namespace: "axiom-composer",
+        nodes: [ReferenceChipNode],
         onError: (error) => {
           throw error;
         },
       }),
     [],
   );
-  const [projected, setProjected] = useState<{ text: string; caret: number | null }>({
+  const [projected, setProjected] = useState<{
+    text: string;
+    detectText: string;
+    caret: number | null;
+  }>({
     text: "",
+    detectText: "",
     caret: null,
   });
   const [focused, setFocused] = useState(false);
@@ -50,10 +71,33 @@ export function DraftEditor({
       history = registerHistory(editor, createEmptyHistoryState(), 1000);
     const listen = editor.registerUpdateListener(({ editorState, tags }) => {
       const next = editorState.read($projectDraft);
-      setProjected((old) => (old.text === next.text && old.caret === next.caret ? old : next));
+      setProjected((old) =>
+        old.text === next.text && old.detectText === next.detectText && old.caret === next.caret
+          ? old
+          : next,
+      );
       if (!tags.has("axiom-external-draft")) setDraft(next.text);
     });
+    const click = editor.registerCommand(
+      CLICK_COMMAND,
+      (event) => {
+        if (event.button !== 0 || event.detail > 1 || !event.target) return false;
+        const selection = $getSelection();
+        if ($isRangeSelection(selection) && !selection.isCollapsed()) return false;
+        const node = $getNearestNodeFromDOMNode(event.target as Node);
+        if (
+          !$isReferenceChipNode(node) ||
+          node.isInvalid() ||
+          node.getSource() !== "workspace-file"
+        )
+          return false;
+        openDelivery(node.getReference());
+        return true;
+      },
+      COMMAND_PRIORITY_LOW,
+    );
     return () => {
+      click();
       listen();
       history();
       unregister();
@@ -79,17 +123,29 @@ export function DraftEditor({
     );
   }, [editor, draft]);
   const menu = useComposerSuggestions({
-    text: projected.text,
+    text: projected.detectText,
     caret: projected.caret,
     enabled: focused && !composing && !disabled,
     sessionId,
-    apply: (start, end, text, expected, caret) => {
+    apply: (start, end, text, expected, caret, candidate) => {
       let applied = false;
       editor.update(
         () => {
           const now = $projectDraft();
-          if (now.text !== expected || now.caret !== caret) return;
-          applied = $replaceDetectSpanWithText({ start, end }, text);
+          if (now.detectText !== expected || now.caret !== caret) return;
+          applied =
+            candidate.kind === "file" && candidate.description
+              ? $replaceDetectSpanWithNodes({ start, end }, [
+                  $createReferenceChipNode({
+                    source: "workspace-file",
+                    ref: candidate.description,
+                    label: candidate.name,
+                    appearance: "file",
+                    clipboardText: candidate.insert,
+                  }),
+                  $createTextNode(" "),
+                ])
+              : $replaceDetectSpanWithText({ start, end }, text);
         },
         { discrete: true },
       );
@@ -152,6 +208,7 @@ export function DraftEditor({
         role="combobox"
         aria-activedescendant={menu.items.length ? "axiom-suggest-" + menu.active : undefined}
       />
+      <DecoratorPortals editor={editor} />
     </fieldset>
   );
 }

@@ -28,6 +28,7 @@ export type Tool = {
   started?: number;
   ended?: number;
   details?: unknown;
+  turn?: number;
 };
 type Session = { id: string; name?: string; firstMessage?: string };
 type State = {
@@ -59,7 +60,19 @@ type JobState = {
   schedules: any[];
   plans: Record<string, { goal: string; items: { text: string; done: boolean }[] }>;
 };
+type HarnessState = {
+  sessionId: string;
+  planMode: boolean;
+  goal: null | {
+    id: string;
+    objective: string;
+    phase: string;
+    remaining: number;
+    evidence?: string;
+  };
+};
 type Snapshot = {
+  harness: HarnessState | null;
   jobs: JobState | null;
   state: State | null;
   messages: Message[];
@@ -79,6 +92,7 @@ type Snapshot = {
   notice: string;
 };
 let snapshot: Snapshot = {
+  harness: null,
   jobs: null,
   state: null,
   messages: [],
@@ -149,16 +163,19 @@ function upsertTool(tools: Tool[], e: Partial<Tool> & { id: string }): Tool[] {
     started: e.started ?? old?.started,
     ended: e.ended ?? old?.ended,
     details: e.details ?? old?.details,
+    turn: e.turn ?? old?.turn,
   };
   return old ? tools.map((t) => (t.id === e.id ? next : t)) : [...tools, next];
 }
 export function projectHistory(messages: Message[]) {
-  let tools: Tool[] = [];
+  let tools: Tool[] = [],
+    turn = 0;
   for (const m of messages) {
+    if (m.role === "user") turn++;
     if (Array.isArray(m.content))
       for (const c of m.content)
         if (c.type === "toolCall")
-          tools = upsertTool(tools, { id: c.id, name: c.name, args: c.arguments });
+          tools = upsertTool(tools, { id: c.id, name: c.name, args: c.arguments, turn });
     if (m.role === "toolResult" && m.toolCallId)
       tools = upsertTool(tools, {
         id: m.toolCallId,
@@ -178,11 +195,12 @@ export async function refresh() {
   pendingEvents = [];
   update({ syncing: true });
   try {
-    const [state, messages, sessions, dialogs] = await Promise.all([
+    const [state, messages, sessions, dialogs, harness] = await Promise.all([
       api("state"),
       api("messages"),
       api("sessions"),
       api("dialogs"),
+      api("harness"),
     ]);
     if (id !== generation) return;
     const switched = snapshot.state?.sessionId !== state.sessionId;
@@ -197,6 +215,7 @@ export async function refresh() {
     }
     update({
       state,
+      harness: harness.sessionId === state.sessionId ? harness : null,
       ...projected,
       sessions,
       dialogs,
@@ -305,6 +324,9 @@ function handleEvent(e: any) {
           stream: e.message.role === "assistant" ? "" : snapshot.stream,
           ...(e.message.errorMessage ? { error: e.message.errorMessage } : {}),
         });
+      break;
+    case "run_status":
+      if (e.busy === false) void run(refresh);
       break;
     case "agent_settled":
       void run(refresh);
