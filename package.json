@@ -13,7 +13,9 @@
     "prestart": "npm run build:ui",
     "runtime:stop": "node scripts/runtime-stop.mjs",
     "prepare:desktop": "pwsh -NoProfile -File scripts/prepare-desktop.ps1",
-    "desktop:build": "npm exec --yes --package=@tauri-apps/cli@2.12.5 -- tauri build --bundles nsis"
+    "desktop:build": "npm exec --yes --package=@tauri-apps/cli@2.12.5 -- tauri build --bundles nsis",
+    "format": "biome format --write src ui",
+    "lint": "biome check src ui"
   },
   "keywords": [],
   "author": "",
@@ -31,6 +33,7 @@
   },
   "private": true,
   "devDependencies": {
+    "@biomejs/biome": "2.6.8",
     "@codemirror/commands": "6.11.1",
     "@codemirror/lang-javascript": "6.2.5",
     "@codemirror/lang-json": "6.0.2",

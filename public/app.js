@@ -83,6 +83,7 @@ async function loadOptions() {
   $('levels').value=state.thinkingLevel;
 }
 async function run(fn) { error(''); try{await fn();}catch(e){error(e);} }
+let recoveringPi=false;
 const events=new EventSource('/api/events');
 events.onopen=()=>run(async()=>{await syncDialogs();await refresh();await loadOptions();});
 events.onerror=()=>{$('status').textContent='连接中断';};
@@ -107,6 +108,7 @@ events.onmessage=({data})=>{
   }
   if(e.type.startsWith('tool_execution_'))showTool(e.toolCallId,e.toolName,e.args,e.result??e.partialResult,e.isError,e.type==='tool_execution_end');
   if(e.type==='agent_settled')run(refresh);
+  if(e.type==='connection_error'){error(e.error);if(!recoveringPi){recoveringPi=true;void refresh().then(loadOptions).catch(error).finally(()=>{recoveringPi=false;});}}
   if(e.type==='state_changed'&&!changing)run(async()=>{await refresh();await loadOptions();});
   if(e.type==='extension_ui_request'||e.type==='ui_closed')extensionEvent(e);
 };

@@ -1,6 +1,6 @@
 # Contributing
 
-Use Windows with Node.js 24 and PowerShell 7 for the currently supported development path. Run `npm ci`, `npm run build:ui` and `npm test` before submitting a change.
+Use Windows with Node.js 24 and PowerShell 7 for the currently supported development path. Run `npm ci`, `npm run lint`, `npm run build:ui` and `npm test` before submitting a change.
 
 Pi remains the sole agent engine. Prefer direct upstream reuse and thin adapters over duplicated protocol, UI or execution implementations. Preserve upstream licensing and record the exact source revision and local modifications in `vendor/dsh/UPSTREAM.md`.
 
@@ -11,3 +11,5 @@ AI-assisted contributions are welcome when the contributor has reviewed the chan
 Never commit credentials, session logs, local workspace contents, provider configuration or generated private artifacts. Report suspected security vulnerabilities privately as described in SECURITY.md.
 
 By submitting changes to this project, you agree that your contributions are licensed under the project's MIT license, while preserving any applicable upstream notices.
+
+Run `npm run format` before committing changes to src/ or ui/. Biome checks owned source only; do not reformat vendored upstream code. Integration tests launch isolated Pi and Cordis runtimes without calling a paid model.
