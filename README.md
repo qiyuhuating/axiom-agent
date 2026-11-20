@@ -24,6 +24,8 @@ Configure a model provider through Pi's native login/configuration before sendin
 
 Edit the built-in prompt from **设置 → 内置提示词**. Axiom stores edits in `axiom-builtin-prompt.json` in the active Pi user configuration directory. Edits survive restarts and session cleanup. The saved text is appended to Pi's system instructions on the next run, including subsequent background job steps. Save an empty prompt to disable the addition. **恢复默认** immediately restores and saves the bundled default.
 
+The **Pi 会话** menu shows native session history and branch points. It can fork from a user message, export the original Pi HTML, copy the latest reply, cycle the model or thinking level, and clear queued prompts or stop an active retry.
+
 Open [http://127.0.0.1:4789](http://127.0.0.1:4789). The workbench binds to loopback only.
 
 ### Configuration

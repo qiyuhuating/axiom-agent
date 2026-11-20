@@ -24,3 +24,37 @@ export function projectHarness({ tree, leafId }) {
   }
   return { goal, planMode: planMode ?? false };
 }
+
+export function projectSessionHistory({ tree, leafId }) {
+  const rows = [];
+  const pending = [];
+  const byId = new Map();
+  for (let i = tree.length - 1; i >= 0; i--) pending.push([tree[i], 0]);
+  while (pending.length) {
+    const [node, depth] = pending.pop();
+    const { entry, children } = node;
+    const message = entry.type === "message" ? entry.message : undefined;
+    const content = message && ["user", "assistant"].includes(message.role) ? message.content : "";
+    const row = {
+      id: entry.id,
+      depth,
+      kind: message?.role ?? entry.type,
+      label: typeof node.label === "string" ? node.label.slice(0, 200) : "",
+      preview:
+        typeof content === "string"
+          ? content.slice(0, 200)
+          : (content?.find((item) => item.type === "text")?.text ?? "").slice(0, 200),
+      active: false,
+    };
+    rows.push(row);
+    byId.set(entry.id, { row, parentId: entry.parentId });
+    for (let i = children.length - 1; i >= 0; i--)
+      pending.push([children[i], depth + Number(children.length > 1)]);
+  }
+  for (let id = leafId; byId.has(id); ) {
+    const { row, parentId } = byId.get(id);
+    row.active = true;
+    id = parentId;
+  }
+  return { rows, leafId };
+}

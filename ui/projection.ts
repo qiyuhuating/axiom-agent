@@ -35,6 +35,7 @@ type State = {
   sessionId: string;
   workspace: string;
   busy: boolean;
+  retrying?: boolean;
   model?: { provider: string; id: string };
   thinkingLevel?: string;
 };
@@ -88,6 +89,7 @@ type Snapshot = {
   syncing: boolean;
   changing: boolean;
   busy: boolean;
+  retrying: boolean;
   connected: boolean;
   error: string;
   notice: string;
@@ -109,6 +111,7 @@ let snapshot: Snapshot = {
   syncing: true,
   changing: false,
   busy: false,
+  retrying: false,
   connected: false,
   error: "",
   notice: "",
@@ -244,6 +247,7 @@ export async function refresh() {
       dialogs,
       stream: "",
       busy: state.busy,
+      retrying: state.retrying === true,
       syncing: false,
     });
     // Live events during an unversioned snapshot cannot safely be replayed:
@@ -340,6 +344,12 @@ function handleEvent(e: any) {
   }
   if (typeof e.busy === "boolean" && e.busy !== snapshot.busy) update({ busy: e.busy });
   switch (e.type) {
+    case "auto_retry_start":
+      update({ retrying: true });
+      break;
+    case "auto_retry_end":
+      update({ retrying: false });
+      break;
     case "message_start":
       if (e.message.role === "assistant") update({ stream: "" });
       break;
@@ -360,6 +370,7 @@ function handleEvent(e: any) {
       if (e.busy === false) void run(refresh);
       break;
     case "agent_settled":
+      update({ retrying: false });
       void run(refresh);
       break;
     case "state_changed":
@@ -384,6 +395,7 @@ function handleEvent(e: any) {
         });
       break;
     case "connection_error":
+      update({ retrying: false });
       setError(e.error);
       if (!recovering) {
         recovering = true;

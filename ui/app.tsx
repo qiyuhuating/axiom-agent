@@ -269,7 +269,7 @@ function App() {
               id="session-actions"
               type="button"
               aria-label="Pi 会话"
-              disabled={locked}
+              disabled={!p.state || !p.connected || p.syncing || p.changing}
               onClick={() => setSessionControlsOpen(true)}
             >
               Pi

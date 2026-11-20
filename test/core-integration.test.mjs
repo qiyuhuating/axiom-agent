@@ -9,6 +9,7 @@ import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 
 async function freePort() {
   const server = createServer();
@@ -146,6 +147,35 @@ test("HTTP host: authenticated runtime, restart, extension confirmation and stal
     assert.equal(JSON.parse(await readFile(mcpPath,"utf8")).mcpServers.fixture.enabled,false);
     await resource({operation:"mcp-toggle",name:"fixture"});
     assert.equal(JSON.parse(await readFile(mcpPath,"utf8")).mcpServers.fixture.enabled,true);
+    const session = SessionManager.create(f.workspace, f.sessionDir);
+    const userEntry = session.appendMessage({role:"user",content:"Pi export fixture",timestamp:Date.now()});
+    const branchLeaf = session.appendMessage({
+      role:"assistant",content:[{type:"text",text:"Native Pi fixture reply"}],timestamp:Date.now(),
+      api:"openai-completions",provider:"fixture",model:"fixture",stopReason:"stop",
+      usage:{input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}},
+    });
+    session.branch(userEntry);
+    const leafId = session.appendMessage({role:"user",content:"Active branch",timestamp:Date.now()});
+    const sessionId = session.getSessionId();
+    assert.ok((await post("action",{action:"switch",value:sessionId})).ok);
+    const {history} = await get("session-details?view=history");
+    assert.equal(history.rows.find(row=>row.id===leafId)?.active,true,JSON.stringify(history));
+    assert.equal(history.rows.find(row=>row.id===userEntry).active,true);
+    assert.equal(history.rows.find(row=>row.id===branchLeaf).active,false);
+    assert.equal((await get("session-details?view=last-reply")).text,null);
+    assert.equal((await post("session-export",{sessionId},false)).status,403);
+    assert.equal((await post("session-export",{sessionId:"different"})).status,400);
+    const exported = await post("session-export",{sessionId});
+    assert.ok(exported.ok,await exported.clone().text());
+    assert.equal(exported.headers.get("content-disposition"),'attachment; filename="pi-session.html"');
+    assert.match(await exported.text(), /<title>Session Export<\/title>/);
+    assert.ok((await post("action",{action:"clear-queue"})).ok);
+    assert.equal((await post("action",{action:"abort-retry"})).status,400);
+    assert.ok((await post("action",{action:"cycle-thinking"})).ok);
+    const fork = await post("action",{action:"fork",value:leafId});
+    assert.ok(fork.ok,await fork.clone().text());
+    assert.equal((await fork.json()).text,"Active branch");
+    assert.notEqual((await get("state")).sessionId,sessionId);
     sse.abort();await eventTask;
   }finally{
     sse?.abort();

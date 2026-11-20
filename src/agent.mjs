@@ -2,7 +2,7 @@ import { unlink } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { config, root } from "./config.mjs";
-import { projectHarness } from "./harness-state.mjs";
+import { projectHarness, projectSessionHistory } from "./harness-state.mjs";
 import { decodeRequest, validateAnswer } from "./interaction-protocol.mjs";
 import { PiClient } from "./pi-client.mjs";
 import { builtinPromptPath } from "./prompt-store.mjs";
@@ -11,6 +11,7 @@ export class Agent {
   #client;
   #listeners = new Set();
   #busy = false;
+  #retrying = false;
   #startup;
   #sessionId;
   #recovering;
@@ -86,6 +87,8 @@ export class Agent {
         this.#dialogs.clear();
       }
       if (event.type === "agent_start") this.#busy = true;
+      if (event.type === "auto_retry_start") this.#retrying = true;
+      if (event.type === "auto_retry_end" || event.type === "agent_settled") this.#retrying = false;
       if (event.type === "agent_settled") this.#busy = false;
       this.#emit({ ...event, busy: this.#busy });
     });
@@ -112,6 +115,7 @@ export class Agent {
     this.#client = undefined;
     this.#startup = undefined;
     this.#busy = false;
+    this.#retrying = false;
     this.#recovering = client
       .stop()
       .catch((e) => console.error("Pi cleanup:", e.message))
@@ -141,6 +145,7 @@ export class Agent {
       },
       thinkingLevel: state.thinkingLevel,
       busy: this.#busy,
+      retrying: this.#retrying,
       sessionId: state.sessionId,
       workspace: config.workspace,
     };
@@ -233,12 +238,27 @@ export class Agent {
     await this.start();
     if (view === "stats") return { stats: await this.#client.getSessionStats() };
     if (view === "forks") return { forks: await this.#client.getForkMessages() };
+    if (view === "history") return { history: projectSessionHistory(await this.#client.getTree()) };
+    if (view === "last-reply") return { text: (await this.#client.getLastAssistantText()) ?? null };
     const [stats, forks, tree] = await Promise.all([
       this.#client.getSessionStats(),
       this.#client.getForkMessages(),
       this.#client.getTree(),
     ]);
     return { stats, forks, tree };
+  }
+  async exportHtml(sessionId, outputPath) {
+    await this.start();
+    return this.exclusiveResourceChange(async () => {
+      if ((await this.#client.getState()).sessionId !== sessionId)
+        throw Error("The active session changed. Reopen the session panel to export it.");
+      await this.#client.exportHtml(outputPath);
+    });
+  }
+  async abortRetry() {
+    await this.start();
+    if (!this.#retrying) throw Error("Pi is not retrying.");
+    return this.#client.abortRetry();
   }
   async abort() {
     await this.start();
@@ -315,6 +335,15 @@ export class Agent {
       }
       if (action === "model") return await this.#client.setModel(value.provider, value.id);
       if (action === "thinking") return await this.#client.setThinkingLevel(value);
+      if (action === "cycle-model") {
+        if (!(await this.#client.cycleModel()))
+          throw Error("No alternative Pi model is available.");
+        return { ok: true };
+      }
+      if (action === "cycle-thinking") {
+        await this.#client.cycleThinkingLevel();
+        return { ok: true };
+      }
       throw new Error("Unknown action");
     } finally {
       this.#sessionRevision++;
@@ -326,6 +355,8 @@ export class Agent {
           "delete",
           "model",
           "thinking",
+          "cycle-model",
+          "cycle-thinking",
           "rename",
           "clone",
           "fork",

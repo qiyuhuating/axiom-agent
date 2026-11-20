@@ -17,6 +17,10 @@ try{
  await page.getByRole('button',{name:'Pi 会话'}).click();
  const sessionControls=page.getByRole('dialog',{name:'Pi 会话'});
  await sessionControls.locator('pre').waitFor();
+ await sessionControls.getByLabel('操作').selectOption('history');
+ await sessionControls.getByRole('list',{name:'会话历史'}).or(sessionControls.getByText('暂无会话记录。',{exact:true})).waitFor();
+ await sessionControls.getByLabel('操作').selectOption('abort-retry');
+ assert.ok(await sessionControls.getByRole('button',{name:'应用'}).isDisabled());
  await sessionControls.getByLabel('操作').selectOption('rename');
  await sessionControls.getByLabel('会话名称').waitFor();
  await sessionControls.getByRole('button',{name:'关闭'}).click();

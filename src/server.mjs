@@ -1,6 +1,9 @@
-import { readFile } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { createServer } from "node:http";
-import { resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { pipeline } from "node:stream/promises";
 import { Agent } from "./agent.mjs";
 import { config, root } from "./config.mjs";
 import { builtinPrompt, setBuiltinPrompt } from "./prompt-store.mjs";
@@ -150,6 +153,25 @@ const server = createServer(async (req, res) => {
       if (path === "/api/file-save") return json(res, await saveFile(await body(req)));
       if (path === "/api/upload") return json(res, await upload(await body(req)));
       if (path === "/api/ui-response") return json(res, await agent.respond(await body(req)));
+      if (path === "/api/session-export") {
+        const { sessionId } = await body(req, 4096);
+        if (typeof sessionId !== "string" || !sessionId) throw Error("Session ID required");
+        const directory = await mkdtemp(join(tmpdir(), "axiom-export-"));
+        const file = join(directory, "pi-session.html");
+        try {
+          await agent.exportHtml(sessionId, file);
+          res.writeHead(200, {
+            "Cache-Control": "no-store",
+            "Content-Type": "application/octet-stream",
+            "Content-Disposition": 'attachment; filename="pi-session.html"',
+            "Content-Length": (await stat(file)).size,
+          });
+          await pipeline(createReadStream(file), res);
+        } finally {
+          await rm(directory, { recursive: true, force: true });
+        }
+        return;
+      }
       if (path === "/api/builtin-prompt") {
         const value = await body(req, 160 * 1024);
         return json(res, await agent.exclusiveResourceChange(() => setBuiltinPrompt(value)));
@@ -192,6 +214,10 @@ const server = createServer(async (req, res) => {
         return json(res, await agent[action](value, images));
       }
       if (action === "clear-queue") return json(res, await agent.clearQueue());
+      if (action === "abort-retry") {
+        await agent.abortRetry();
+        return json(res, { ok: true });
+      }
       if (action === "abort") {
         await agent.abort();
         return json(res, { ok: true });
