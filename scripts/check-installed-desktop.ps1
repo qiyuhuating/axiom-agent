@@ -48,6 +48,10 @@ try {
 
     & node (Join-Path $PSScriptRoot 'check-installed-terminal.mjs') $debugPort $baseUrl
     if ($LASTEXITCODE -ne 0) { throw 'Installed WebView2 terminal smoke test failed' }
+
+    Set-Content (Join-Path $dataDir 'workspace/axiom-fixture.txt') 'Axiom UI smoke fixture'
+    & node (Join-Path $PSScriptRoot 'check-installed-appearance.mjs') $debugPort $baseUrl
+    if ($LASTEXITCODE -ne 0) { throw 'Installed WebView2 appearance smoke test failed' }
 } finally {
     if (!$desktop.HasExited) {
         if (!$desktop.CloseMainWindow() -or !$desktop.WaitForExit(10000)) { $desktop.Kill() }

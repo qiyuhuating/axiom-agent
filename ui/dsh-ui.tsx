@@ -1,10 +1,43 @@
-import { Activity, ArrowUp, MessageSquare, PanelLeft, Plus, Square, Trash2 } from "lucide-react";
+import {
+  Activity,
+  ArrowUp,
+  MessageSquare,
+  PanelLeft,
+  PanelRight,
+  Paperclip,
+  Plus,
+  Search,
+  Settings,
+  Square,
+  SunMoon,
+  Trash2,
+} from "lucide-react";
+
+export { initComposerMenu } from "./composer-menu.tsx";
+export { clearUserText, drawUserText, maskCredentials } from "./secret-view.tsx";
+
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
-import { computeColumns, SIDEBAR_DEFAULT } from "../vendor/dsh/layout/columns.ts";
+import heroCss from "../vendor/dsh/conversation/HeroShell.module.css";
+import inputCss from "../vendor/dsh/conversation/InputBar.module.css";
+import {
+  computeColumns,
+  RIGHTBAR_DEFAULT_RATIO,
+  SIDEBAR_AUTO_COLLAPSE,
+  SIDEBAR_DEFAULT,
+  SIDEBAR_DRAWER_BREAKPOINT,
+} from "../vendor/dsh/layout/columns.ts";
 import { Button } from "../vendor/dsh/primitives/Button.tsx";
 import { Modal } from "../vendor/dsh/primitives/Modal.tsx";
+import rowsCss from "../vendor/dsh/sidebar/Rows.module.css";
+import settingsCss from "../vendor/dsh/sidebar/SettingsRoot.module.css";
+import sidebarCss from "../vendor/dsh/sidebar/SidebarRoot.module.css";
+import workspaceCss from "../vendor/dsh/sidebar/WorkspaceBrowser.module.css";
+import { maskCredentials } from "./credential-mask.ts";
 import "../vendor/dsh/theme/base.css";
+import "../vendor/dsh/theme/design-platform.css";
+import "../vendor/dsh/theme/scrollbar.css";
+import "../vendor/dsh/theme/focus.css";
 
 type Session = { id: string; name?: string; firstMessage?: string };
 type Props = {
@@ -15,10 +48,12 @@ type Props = {
   onDelete: (id: string) => Promise<void>;
 };
 function SessionList({ sessions, current, disabled, onSelect, onDelete }: Props) {
+  const [query, setQuery] = useState("");
+  const [searching, setSearching] = useState(false);
   const [target, setTarget] = useState<Session | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [failure, setFailure] = useState("");
-  const title = (s: Session) => s.name || s.firstMessage || "未命名会话";
+  const title = (s: Session) => maskCredentials(s.name || s.firstMessage || "未命名会话");
   async function confirm() {
     if (!target || deleting) return;
     setDeleting(true);
@@ -34,36 +69,82 @@ function SessionList({ sessions, current, disabled, onSelect, onDelete }: Props)
   }
   return (
     <>
-      <div className="session-list">
-        {sessions.length === 0 && <p className="empty-sessions">暂无历史会话</p>}
-        {sessions.map((s) => (
-          <div key={s.id} className={"session-row" + (s.id === current ? " active" : "")}>
-            <Button
-              variant="ghost"
-              className="session-select"
-              disabled={disabled || deleting}
-              aria-current={s.id === current ? "page" : undefined}
-              title={title(s)}
-              icon={<MessageSquare size={16} strokeWidth={1.7} />}
-              onClick={() => void onSelect(s.id)}
-            >
-              <span>{title(s)}</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="session-delete"
-              disabled={disabled || deleting}
-              aria-label={"删除会话：" + title(s)}
-              title="删除会话"
-              icon={<Trash2 size={16} strokeWidth={1.7} />}
-              onClick={() => {
-                setFailure("");
-                setTarget(s);
+      <div className={workspaceCss.root + " axiom-workspace-list"}>
+        <div className={workspaceCss.sectionHeader}>
+          {searching ? (
+            <input
+              className="session-search"
+              ref={(input) => {
+                if (input) input.focus();
+              }}
+              aria-label="搜索会话"
+              placeholder="搜索会话"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setQuery("");
+                  setSearching(false);
+                }
               }}
             />
-          </div>
-        ))}
+          ) : (
+            <span className={workspaceCss.sectionLabel}>会话历史</span>
+          )}
+          <button
+            type="button"
+            className={workspaceCss.iconButton}
+            title="搜索会话"
+            aria-label="搜索会话"
+            aria-expanded={searching}
+            onClick={() => {
+              setSearching(!searching);
+              setQuery("");
+            }}
+          >
+            <Search size={16} />
+          </button>
+        </div>
+        <div className={workspaceCss.list + " session-list"}>
+          {sessions.length === 0 && <p className="empty-sessions">暂无历史会话</p>}
+          {sessions
+            .filter((s) => title(s).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
+            .map((s) => (
+              <div
+                key={s.id}
+                className={
+                  rowsCss.sessionRow +
+                  " session-row" +
+                  (s.id === current ? " " + rowsCss.selected + " active" : "")
+                }
+              >
+                <Button
+                  variant="ghost"
+                  className="session-select"
+                  disabled={disabled || deleting}
+                  aria-current={s.id === current ? "page" : undefined}
+                  title={title(s)}
+                  icon={<MessageSquare size={16} strokeWidth={1.7} />}
+                  onClick={() => void onSelect(s.id)}
+                >
+                  <span className={rowsCss.title}>{title(s)}</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="session-delete"
+                  disabled={disabled || deleting}
+                  aria-label={"删除会话：" + title(s)}
+                  title="删除会话"
+                  icon={<Trash2 size={16} strokeWidth={1.7} />}
+                  onClick={() => {
+                    setFailure("");
+                    setTarget(s);
+                  }}
+                />
+              </div>
+            ))}
+        </div>
       </div>
       <Modal
         open={target !== null}
@@ -113,7 +194,16 @@ export function renderSessions(props: Props) {
 const iconRoots = new Map<string, ReturnType<typeof createRoot>>();
 export function controlIcon(
   id: string,
-  kind: "new" | "send" | "stop" | "trace" | "sidebar",
+  kind:
+    | "new"
+    | "send"
+    | "stop"
+    | "trace"
+    | "sidebar"
+    | "workbench"
+    | "theme"
+    | "attach"
+    | "settings",
   label: string,
 ) {
   const el = document.getElementById(id)!;
@@ -129,6 +219,10 @@ export function controlIcon(
     stop: Square,
     trace: Activity,
     sidebar: PanelLeft,
+    workbench: PanelRight,
+    theme: SunMoon,
+    attach: Paperclip,
+    settings: Settings,
   }[kind];
   root.render(
     <>
@@ -137,14 +231,92 @@ export function controlIcon(
     </>,
   );
 }
+let sidebarPreference: boolean | undefined;
+let workbenchOpen = false;
 export function layout() {
   const w = window.innerWidth;
-  if (w < 650) {
-    document.body.style.removeProperty("--sidebar-width");
-    document.body.style.removeProperty("--trace-width");
-    return;
-  }
-  const c = computeColumns(w, SIDEBAR_DEFAULT, w >= 1000 ? 330 : 0);
+  const drawer = w < SIDEBAR_DRAWER_BREAKPOINT;
+  const collapsed = sidebarPreference ?? w < SIDEBAR_AUTO_COLLAPSE;
+  const c = computeColumns(
+    w,
+    collapsed ? 0 : SIDEBAR_DEFAULT,
+    workbenchOpen
+      ? w * (document.body.classList.contains("workbench-wide") ? 0.65 : RIGHTBAR_DEFAULT_RATIO)
+      : 0,
+  );
+  if (!drawer) document.body.classList.remove("sidebar-drawer");
+  document.body.classList.toggle("sidebar-collapsed", collapsed && !drawer);
+  document.querySelector(".sidebar")?.classList.toggle(sidebarCss.collapsed, collapsed && !drawer);
+  document
+    .getElementById("sidebar-settings")
+    ?.classList.toggle(settingsCss.rail, collapsed && !drawer);
+  document.body.classList.toggle("workbench-open", workbenchOpen);
+  document.body.classList.toggle(
+    "workbench-overlay",
+    workbenchOpen && (drawer || c.rightbar === 0),
+  );
   document.body.style.setProperty("--sidebar-width", c.sidebar + "px");
   document.body.style.setProperty("--trace-width", c.rightbar + "px");
+  document.getElementById("show-workbench")?.setAttribute("aria-expanded", String(workbenchOpen));
+}
+export function toggleWorkbench() {
+  workbenchOpen = !workbenchOpen;
+  layout();
+}
+export function styleWelcome() {
+  document.querySelector(".welcome h1")?.classList.add(heroCss.headline);
+}
+export function initAppearance() {
+  document.getElementById("form")?.classList.add(inputCss.card);
+  styleWelcome();
+  const sidebar = document.querySelector(".sidebar");
+  sidebar?.classList.add(sidebarCss.root);
+  sidebar?.querySelector(".brand")?.classList.add(sidebarCss.logoRow);
+  sidebar?.querySelector(".brand-name")?.classList.add(sidebarCss.brandName);
+  document.getElementById("new-session-row")?.classList.add(sidebarCss.newSessionRow);
+  document.getElementById("new")?.classList.add(sidebarCss.newSession);
+  document.getElementById("sidebar-toggle")?.classList.add(sidebarCss.iconButton);
+  document.getElementById("sidebar-settings")?.classList.add(settingsCss.trigger);
+  const media = matchMedia("(prefers-color-scheme: dark)");
+  const apply = () => {
+    const mode = localStorage.getItem("axiom.appearance") || "system";
+    document.body.toggleAttribute(
+      "data-ds-dark-theme",
+      mode === "dark" || (mode === "system" && media.matches),
+    );
+    document.dispatchEvent(new Event("axiom:theme"));
+  };
+  media.addEventListener("change", apply);
+  apply();
+  controlIcon("sidebar-settings", "settings", "设置");
+  controlIcon("theme-toggle", "theme", "");
+  controlIcon("sidebar-toggle", "sidebar", "");
+  controlIcon("sidebar-open", "sidebar", "");
+  controlIcon("show-workbench", "workbench", "工作台");
+  controlIcon("attach-button", "attach", "附件");
+  document.getElementById("theme-toggle")!.onclick = () => {
+    const dark = document.body.hasAttribute("data-ds-dark-theme");
+    localStorage.setItem("axiom.appearance", dark ? "light" : "dark");
+    apply();
+  };
+  document.getElementById("sidebar-toggle")!.onclick = () => {
+    if (window.innerWidth < SIDEBAR_DRAWER_BREAKPOINT)
+      document.body.classList.remove("sidebar-drawer");
+    else {
+      sidebarPreference = true;
+      layout();
+    }
+  };
+  document.getElementById("sidebar-open")!.onclick = () => {
+    if (window.innerWidth < SIDEBAR_DRAWER_BREAKPOINT)
+      document.body.classList.toggle("sidebar-drawer");
+    else {
+      sidebarPreference = false;
+      layout();
+    }
+  };
+  document.getElementById("sessions")!.addEventListener("click", (event) => {
+    if (event.target instanceof Element && event.target.closest(".session-select"))
+      document.body.classList.remove("sidebar-drawer");
+  });
 }

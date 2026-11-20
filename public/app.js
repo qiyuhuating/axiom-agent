@@ -1,5 +1,5 @@
 import MarkdownIt from '/markdown.js';
-import {renderSessions,controlIcon,layout} from '/dsh-ui.js';
+import {renderSessions,controlIcon,layout,initAppearance,drawUserText,clearUserText,maskCredentials,initComposerMenu,styleWelcome} from '/dsh-ui.js';
 import {initWorkbench,extensionEvent,syncDialogs,attachmentPayload,clearAttachments} from '/workbench.js';
 const markdown = new MarkdownIt({ html:false, linkify:true }).disable('image');
 const $ = id => document.getElementById(id);
@@ -15,7 +15,7 @@ async function changeSession(kind,value){
   finally { try{await refresh();}finally{changing=false;setBusy(busy);} }
   await loadOptions();
 }
-layout();window.addEventListener('resize',layout);
+initAppearance();layout();window.addEventListener('resize',layout);
 controlIcon('new','new','新建会话');controlIcon('stop','stop','停止');controlIcon('trace-heading','trace','执行轨迹');
 const api = async (path, data) => {
   const response = await fetch('/api/'+path, data === undefined ? {} : {method:'POST',headers:{'Content-Type':'application/json','X-Axiom-Client':'1'},body:JSON.stringify(data)});
@@ -24,7 +24,7 @@ const api = async (path, data) => {
   return value;
 };
 const action = (action,value,images) => api('action',{action,value,...(images?.length?{images}:{})});
-initWorkbench();
+initWorkbench();initComposerMenu();
 function error(e) { $('error').textContent = e?.message || String(e || ''); }
 function setBusy(value) {
   busy = value;
@@ -38,7 +38,7 @@ function message(role, text, finalized = true) {
   transcript.querySelector('.welcome')?.remove();
   const article = document.createElement('article'); article.className=role;
   const label=document.createElement('b'); label.textContent=role==='user'?'你':'Axiom';
-  const content=document.createElement('div'); if(role==='assistant' && finalized){content.className='markdown';content.innerHTML=markdown.render(text);}else{content.textContent=text;}
+  const content=document.createElement('div'); if(role==='assistant' && finalized){content.className='markdown';content.innerHTML=markdown.render(text);}else if(role==='user'){drawUserText(content,text);}else{content.textContent=text;}
   article.append(label,content); transcript.append(article); scroll(); return content;
 }
 function textOf(content) {
@@ -52,11 +52,11 @@ function showTool(id,name,args,result,failed,finished) {
     node.append(title,pre); trace.append(node); item={title,pre,args}; tools.set(id,item);
   }
   item.title.textContent=(finished?(failed?'失败 · ':'完成 · '):'运行 · ')+name;
-  item.pre.textContent=JSON.stringify({arguments:args??item.args,result},null,2);
+  item.pre.textContent=maskCredentials(JSON.stringify({arguments:args??item.args,result},(_key,value)=>typeof value==="string"?maskCredentials(value):value,2));
 }
 function renderHistory(messages) {
-  transcript.replaceChildren(); trace.replaceChildren(); tools.clear(); activeMessage=null;
-  if (!messages.length) {const div=document.createElement('div');div.className='welcome';const h=document.createElement('h1');h.textContent='今天构建什么？';const p=document.createElement('p');p.textContent='分析代码、实现功能、验证工程，或处理通用任务。';div.append(h,p);transcript.append(div);}
+  clearUserText();transcript.replaceChildren(); trace.replaceChildren(); tools.clear(); activeMessage=null;
+  if (!messages.length) {const div=document.createElement('div');div.className='welcome';const h=document.createElement('h1');h.textContent='今天构建什么？';const p=document.createElement('p');p.textContent='分析代码、实现功能、验证工程，或处理通用任务。';div.append(h,p);transcript.append(div);styleWelcome();}
   for(const m of messages) {
     if(m.role==='user'||m.role==='assistant') {
       const text=textOf(m.content); if(text || m.errorMessage) message(m.role,text||m.errorMessage);

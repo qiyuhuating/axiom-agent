@@ -4,7 +4,7 @@ import { json as jsonLanguage } from "@codemirror/lang-json";
 import { markdown as markdownLanguage } from "@codemirror/lang-markdown";
 import { python } from "@codemirror/lang-python";
 import { defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language";
-import { EditorState } from "@codemirror/state";
+import { Compartment, EditorState } from "@codemirror/state";
 import {
   drawSelection,
   EditorView,
@@ -42,18 +42,19 @@ function language(path: string) {
   if (/\.md$/i.test(path)) return markdownLanguage();
   return [];
 }
-const editorTheme = EditorView.theme(
-  {
-    "&": { height: "100%", background: "#15171a", color: "#dce3e9" },
-    ".cm-scroller": { overflow: "auto", fontFamily: "Consolas, monospace" },
-    ".cm-gutters": { background: "#1b1e22", color: "#7b8792", border: "none" },
-    ".cm-activeLine": { background: "#242930" },
-    ".cm-activeLineGutter": { background: "#242930" },
-    ".cm-cursor": { borderLeftColor: "#b2e1cc" },
-    ".cm-selectionBackground": { background: "#344e46!important" },
-  },
-  { dark: true },
-);
+const appearance = new Compartment();
+const editorTheme = () =>
+  EditorView.theme(
+    {
+      "&": { height: "100%", background: "var(--bg)", color: "var(--ink)" },
+      ".cm-scroller": { overflow: "auto", fontFamily: "var(--ds-font-family-code)" },
+      ".cm-gutters": { background: "var(--panel)", color: "var(--muted)", border: "none" },
+      ".cm-activeLine, .cm-activeLineGutter": { background: "var(--hover)" },
+      ".cm-cursor": { borderLeftColor: "var(--ink)" },
+      ".cm-selectionBackground": { background: "var(--dsw-specific-bubble-highlight)!important" },
+    },
+    { dark: document.body.hasAttribute("data-ds-dark-theme") },
+  );
 export default function Editor({ path }: { path: string }) {
   const [file, setFile] = useState<any>(null),
     [error, setError] = useState(""),
@@ -103,7 +104,7 @@ export default function Editor({ path }: { path: string }) {
           keymap.of([...defaultKeymap, ...historyKeymap]),
           language(path),
           syntaxHighlighting(defaultHighlightStyle),
-          editorTheme,
+          appearance.of(editorTheme()),
           EditorView.updateListener.of((u) => {
             if (u.docChanged) {
               latest.current = u.state.sliceDoc();
@@ -117,7 +118,10 @@ export default function Editor({ path }: { path: string }) {
       }),
     });
     view.current = v;
+    const applyTheme = () => v.dispatch({ effects: appearance.reconfigure(editorTheme()) });
+    document.addEventListener("axiom:theme", applyTheme);
     return () => {
+      document.removeEventListener("axiom:theme", applyTheme);
       v.destroy();
       view.current = null;
     };
