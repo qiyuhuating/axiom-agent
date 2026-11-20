@@ -57,9 +57,9 @@ try{
  await page.getByText('已保存',{exact:true}).waitFor();
  assert.equal((await (await page.request.get(base+'/api/builtin-prompt')).json()).text,'Installer prompt fixture');
  await page.getByRole('button',{name:'恢复默认'}).click();
- assert.equal(await builtin.inputValue(),defaultPrompt);
- await page.getByRole('button',{name:'保存提示词'}).click();
  await page.getByText('已保存',{exact:true}).waitFor();
+ assert.equal(await builtin.inputValue(),defaultPrompt);
+ assert.equal((await (await page.request.get(base+'/api/builtin-prompt')).json()).text,defaultPrompt);
  await page.locator('#sidebar-panels').getByRole('button',{name:'任务与计划',exact:true}).click();
  await page.getByLabel('DAG 节点').waitFor();
  await capture(page,'jobs.png');

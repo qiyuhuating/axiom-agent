@@ -3,15 +3,14 @@ import { createServer } from "node:http";
 import { resolve } from "node:path";
 import { Agent } from "./agent.mjs";
 import { config, root } from "./config.mjs";
+import { builtinPrompt, setBuiltinPrompt } from "./prompt-store.mjs";
 import { ensureRuntime, proxyRuntime } from "./runtime-client.mjs";
 import {
-  builtinPrompt,
   inventory,
   permission,
   providerAction,
   providers,
   resourceAction,
-  setBuiltinPrompt,
   setPermission,
 } from "./settings.mjs";
 import { gitDiff, listFiles, openFile, saveFile, upload } from "./workspace.mjs";

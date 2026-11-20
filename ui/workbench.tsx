@@ -480,10 +480,14 @@ function BuiltinPromptEditor() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const text = draft ?? value?.text ?? "";
-  async function save() {
+  async function save(reset = false) {
     setSaving(true);
+    setSaved(false);
     try {
-      const next = await api("builtin-prompt", { text, expected: value.text });
+      const next = await api(
+        "builtin-prompt",
+        reset ? { reset: true, expected: value.text } : { text, expected: value.text },
+      );
       setValue(next);
       setDraft(undefined);
       setError("");
@@ -513,14 +517,7 @@ function BuiltinPromptEditor() {
       </label>
       <p className="wb-muted">附加到 Pi 的系统提示词，下次运行时生效。留空可停用附加提示。</p>
       <div className="builtin-prompt-actions">
-        <Button
-          size="sm"
-          disabled={!value || saving}
-          onClick={() => {
-            setDraft(value.defaultText);
-            setSaved(false);
-          }}
-        >
+        <Button size="sm" disabled={!value || saving} onClick={() => void save(true)}>
           恢复默认
         </Button>
         <Button size="sm" disabled={saving} onClick={() => void load()}>

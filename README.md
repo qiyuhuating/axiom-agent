@@ -22,7 +22,7 @@ npm start
 
 Configure a model provider through Pi's native login/configuration before sending requests. Axiom uses the installed Pi provider catalog and existing Pi credentials. Never place API keys in the repository.
 
-Edit the built-in prompt from the desktop sidebar under **设置 → 内置提示词**. The saved text is appended to Pi's own system instructions on the next run, including subsequent background job steps. Clear the text to disable the addition or restore the default and save.
+Edit the built-in prompt from **设置 → 内置提示词**. Axiom stores edits in `axiom-builtin-prompt.json` in the active Pi user configuration directory. Edits survive restarts and session cleanup. The saved text is appended to Pi's system instructions on the next run, including subsequent background job steps. Save an empty prompt to disable the addition. **恢复默认** immediately restores and saves the bundled default.
 
 Open [http://127.0.0.1:4789](http://127.0.0.1:4789). The workbench binds to loopback only.
 

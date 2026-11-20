@@ -5,6 +5,7 @@ import { config, root } from "./config.mjs";
 import { projectHarness } from "./harness-state.mjs";
 import { decodeRequest, validateAnswer } from "./interaction-protocol.mjs";
 import { PiClient } from "./pi-client.mjs";
+import { builtinPromptPath } from "./prompt-store.mjs";
 
 export class Agent {
   #client;
@@ -62,7 +63,7 @@ export class Agent {
         AXIOM_MAX_OUTPUT_TOKENS: String(config.maxOutputTokens ?? ""),
         AXIOM_PROVIDER_FILE: resolve(config.sessionDir, "axiom-providers.json"),
         AXIOM_PERMISSION_FILE: resolve(config.sessionDir, "permission.json"),
-        AXIOM_BUILTIN_PROMPT_FILE: resolve(config.sessionDir, "builtin-prompt.json"),
+        AXIOM_BUILTIN_PROMPT_FILE: builtinPromptPath,
       },
     });
     this.#client = client;

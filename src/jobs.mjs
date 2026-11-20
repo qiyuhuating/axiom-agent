@@ -7,6 +7,7 @@ import { assertTaskGraphCandidate } from "../vendor/dsh/team/task-graph.mjs";
 import { config, root } from "./config.mjs";
 import { PiClient } from "./pi-client.mjs";
 import { platform } from "./platform/index.mjs";
+import { builtinPromptPath } from "./prompt-store.mjs";
 import { retryTeam } from "./team-retry.mjs";
 
 const base = resolve(config.sessionDir, "axiom-jobs");
@@ -181,7 +182,7 @@ async function run(worker) {
         AXIOM_TEAM_TOKEN: worker.token,
         AXIOM_PROVIDER_FILE: resolve(config.sessionDir, "axiom-providers.json"),
         AXIOM_PERMISSION_FILE: policy,
-        AXIOM_BUILTIN_PROMPT_FILE: resolve(config.sessionDir, "builtin-prompt.json"),
+        AXIOM_BUILTIN_PROMPT_FILE: builtinPromptPath,
         AXIOM_MAX_OUTPUT_TOKENS: String(config.maxOutputTokens ?? ""),
       },
     });
