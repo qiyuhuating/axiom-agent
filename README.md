@@ -22,6 +22,8 @@ npm start
 
 Configure a model provider through Pi's native login/configuration before sending requests. Axiom uses the installed Pi provider catalog and existing Pi credentials. Never place API keys in the repository.
 
+Edit the built-in prompt from the desktop sidebar under **设置 → 内置提示词**. The saved text is appended to Pi's own system instructions on the next run, including subsequent background job steps. Clear the text to disable the addition or restore the default and save.
+
 Open [http://127.0.0.1:4789](http://127.0.0.1:4789). The workbench binds to loopback only.
 
 ### Configuration

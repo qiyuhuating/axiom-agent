@@ -54,6 +54,15 @@ test("HTTP host: authenticated runtime, restart, extension confirmation and stal
   const post=(path,body,authorized=true)=>fetch(base+"/api/"+path,{method:"POST",headers:{"Content-Type":"application/json",...(authorized?{Origin:base,"X-Axiom-Client":"1"}:{Origin:"https://example.invalid"})},body:JSON.stringify(body),signal:AbortSignal.timeout(35000)});
   try {
     await until(()=>base,20000);
+    const initialPrompt = await get("builtin-prompt");
+    assert.equal(initialPrompt.text, initialPrompt.defaultText);
+    const promptEdit = {text:"Keep the fixture responses brief.",expected:initialPrompt.text};
+    assert.equal((await post("builtin-prompt",promptEdit,false)).status,403);
+    assert.equal((await post("builtin-prompt",promptEdit)).status,200);
+    assert.equal((await get("builtin-prompt")).text,promptEdit.text);
+    assert.equal((await post("builtin-prompt",{...promptEdit,text:"stale edit"})).status,400);
+    assert.equal((await post("builtin-prompt",{text:"",expected:promptEdit.text})).status,200);
+    assert.equal((await get("builtin-prompt")).text,"");
     if(gateway){
       const privatePort=await until(()=>/Axiom Agent http:\/\/127\.0\.0\.1:(\d+)/.exec(stderr)?.[1]);
       assert.notEqual(Number(privatePort),Number(new URL(base).port));
@@ -113,6 +122,10 @@ test("HTTP host: authenticated runtime, restart, extension confirmation and stal
     assert.equal((await get("harness")).planMode,false);
     assert.ok((await post("action",{action:"prompt",value:"/axiom-plan on"})).ok);
     assert.equal((await get("harness")).planMode,true);
+    const snapshot = await get("snapshot");
+    assert.equal(snapshot.state.sessionId,snapshot.harness.sessionId);
+    assert.equal(snapshot.harness.planMode,true);
+    assert.deepEqual(snapshot.dialogs,[]);
     assert.ok((await post("action",{action:"prompt",value:"/axiom-plan off"})).ok);
     assert.equal((await get("harness")).planMode,false);
     const piDir=join(f.workspace,".pi");

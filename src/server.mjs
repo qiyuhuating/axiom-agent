@@ -5,11 +5,13 @@ import { Agent } from "./agent.mjs";
 import { config, root } from "./config.mjs";
 import { ensureRuntime, proxyRuntime } from "./runtime-client.mjs";
 import {
+  builtinPrompt,
   inventory,
   permission,
   providerAction,
   providers,
   resourceAction,
+  setBuiltinPrompt,
   setPermission,
 } from "./settings.mjs";
 import { gitDiff, listFiles, openFile, saveFile, upload } from "./workspace.mjs";
@@ -34,13 +36,13 @@ function json(res, data, status = 200) {
   });
   res.end(JSON.stringify(data));
 }
-async function body(req) {
+async function body(req, limit = 96 * 1024 * 1024) {
   let result = "",
     bytes = 0;
   req.setEncoding("utf8");
   for await (const chunk of req) {
     bytes += Buffer.byteLength(chunk);
-    if (bytes > 96 * 1024 * 1024) throw new Error("Request too large");
+    if (bytes > limit) throw new Error("Request too large");
     result += chunk;
   }
   return JSON.parse(result);
@@ -80,6 +82,7 @@ const server = createServer(async (req, res) => {
         return res.end(await readFile(resolve(root, "public", file)));
       }
       if (path === "/api/health") return json(res, { ok: true });
+      if (path === "/api/snapshot") return json(res, await agent.snapshot());
       if (path === "/api/state") return json(res, await agent.state());
       if (path === "/api/harness") return json(res, await agent.harnessState());
       if (path === "/api/messages") return json(res, await agent.messages());
@@ -91,7 +94,8 @@ const server = createServer(async (req, res) => {
       if (path === "/api/file")
         return json(res, await openFile(url.searchParams.get("path") ?? ""));
       if (path === "/api/diff") return json(res, await gitDiff());
-      if (path === "/api/session-details") return json(res, await agent.sessionDetails());
+      if (path === "/api/session-details")
+        return json(res, await agent.sessionDetails(url.searchParams.get("view")));
       if (path === "/api/commands") return json(res, await agent.commands());
       if (path === "/api/dialogs") return json(res, agent.pendingDialogs());
       if (path === "/api/settings")
@@ -102,6 +106,7 @@ const server = createServer(async (req, res) => {
           workspace: config.workspace,
         });
       if (path === "/api/providers") return json(res, await providers());
+      if (path === "/api/builtin-prompt") return json(res, await builtinPrompt());
       if (path === "/api/resources") return json(res, await inventory());
       if (
         ["/api/jobs", "/api/terminals", "/api/terminal/events", "/api/runtime-health"].includes(
@@ -146,6 +151,10 @@ const server = createServer(async (req, res) => {
       if (path === "/api/file-save") return json(res, await saveFile(await body(req)));
       if (path === "/api/upload") return json(res, await upload(await body(req)));
       if (path === "/api/ui-response") return json(res, await agent.respond(await body(req)));
+      if (path === "/api/builtin-prompt") {
+        const value = await body(req, 160 * 1024);
+        return json(res, await agent.exclusiveResourceChange(() => setBuiltinPrompt(value)));
+      }
       if (path === "/api/permission") {
         if (agent.busy) throw Error("Stop the agent before changing permissions");
         return json(res, await setPermission((await body(req)).mode));

@@ -6,10 +6,12 @@ import { promisify } from "node:util";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { ProjectTrustStore } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/trust-manager.js";
 import { config, root } from "./config.mjs";
+import { DEFAULT_PROMPT, PROMPT_LIMIT, readPrompt } from "./prompt-settings.mjs";
 import { workspacePath } from "./workspace.mjs";
 
 const exec = promisify(execFile);
 const permissionPath = resolve(config.sessionDir, "permission.json");
+const builtinPromptPath = resolve(config.sessionDir, "builtin-prompt.json");
 export const readJson = async (path, fallback) => {
   try {
     return JSON.parse(await readFile(path, "utf8"));
@@ -30,6 +32,22 @@ export async function setPermission(mode) {
   if (!["full", "ask", "read-only"].includes(mode)) throw Error("Invalid permission mode");
   await writeJson(permissionPath, { mode });
   return { mode };
+}
+export async function builtinPrompt() {
+  return {
+    text: await readPrompt(builtinPromptPath),
+    defaultText: DEFAULT_PROMPT,
+    limit: PROMPT_LIMIT,
+  };
+}
+export async function setBuiltinPrompt({ text, expected }) {
+  if (typeof text !== "string" || text.length > PROMPT_LIMIT || typeof expected !== "string")
+    throw Error("Invalid built-in prompt");
+  const current = await readPrompt(builtinPromptPath);
+  if (expected !== current)
+    throw Error("The prompt changed in another window. Reload it and try again.");
+  if (text !== current) await writeJson(builtinPromptPath, { text });
+  return { text, defaultText: DEFAULT_PROMPT, limit: PROMPT_LIMIT };
 }
 export async function inventory() {
   const globalDir = getAgentDir(),

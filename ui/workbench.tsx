@@ -7,10 +7,12 @@ import {
   type Dialog,
   getSnapshot,
   loadJobs,
+  loadOptions,
   removeDialog,
   useProjection,
+  useProjectionField,
 } from "./projection.ts";
-import { layoutActions } from "./shell-layout.ts";
+import { layoutActions, useLayout } from "./shell-layout.ts";
 import { StructuredDialog } from "./structured-dialog.tsx";
 
 const Editor = React.lazy(() => import("./editor.tsx"));
@@ -472,17 +474,87 @@ function Providers() {
   );
 }
 
+function BuiltinPromptEditor() {
+  const { value, error, load, setValue, setError } = useLoad("builtin-prompt", null);
+  const [draft, setDraft] = useState<string>();
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const text = draft ?? value?.text ?? "";
+  async function save() {
+    setSaving(true);
+    try {
+      const next = await api("builtin-prompt", { text, expected: value.text });
+      setValue(next);
+      setDraft(undefined);
+      setError("");
+      setSaved(true);
+    } catch (e) {
+      setError(msg(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="wb-form settings-section">
+      {errorBox(error)}
+      <label>
+        内置提示词
+        <textarea
+          aria-label="内置提示词"
+          rows={9}
+          maxLength={value?.limit}
+          disabled={!value || saving}
+          value={text}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            setSaved(false);
+          }}
+        />
+      </label>
+      <p className="wb-muted">附加到 Pi 的系统提示词，下次运行时生效。留空可停用附加提示。</p>
+      <div className="builtin-prompt-actions">
+        <Button
+          size="sm"
+          disabled={!value || saving}
+          onClick={() => {
+            setDraft(value.defaultText);
+            setSaved(false);
+          }}
+        >
+          恢复默认
+        </Button>
+        <Button size="sm" disabled={saving} onClick={() => void load()}>
+          重新读取
+        </Button>
+        <Button
+          variant="primary"
+          disabled={!value || saving || text === value.text}
+          onClick={() => void save()}
+        >
+          保存提示词
+        </Button>
+      </div>
+      {saved && <p role="status">已保存</p>}
+    </div>
+  );
+}
+
+const settingsSections = {
+  general: "通用与权限",
+  models: "模型提供商",
+  prompt: "内置提示词",
+} as const;
 function SettingsView() {
-  const { value, error, load, setError } = useLoad("settings", null),
-    models = useLoad("models", []),
-    levels = useLoad("levels", []),
-    state = useLoad("state", null);
-  const [section, setSection] = useState<"general" | "models">("general");
+  const { value, error, load, setError } = useLoad("settings", null);
+  const models = useProjectionField("models");
+  const levels = useProjectionField("levels");
+  const state = useProjectionField("state");
+  const [section, setSection] = useState<keyof typeof settingsSections>("general");
+  const [opened, setOpened] = useState({ general: true, models: false, prompt: false });
   async function update(action: string, value: unknown) {
     try {
       await api("action", { action, value });
-      await state.load();
-      await levels.load();
+      await loadOptions();
       setError("");
     } catch (e) {
       setError(msg(e));
@@ -505,32 +577,35 @@ function SettingsView() {
         </Button>
       </Header>
       <nav className="settings-sections" aria-label="设置分类">
-        {(["general", "models"] as const).map((key) => (
+        {(Object.keys(settingsSections) as (keyof typeof settingsSections)[]).map((key) => (
           <button
             type="button"
             key={key}
             className={settingsCss.navCell + (key === section ? " " + settingsCss.active : "")}
             aria-pressed={key === section}
-            onClick={() => setSection(key)}
+            onClick={() => {
+              setSection(key);
+              if (!opened[key]) setOpened({ ...opened, [key]: true });
+            }}
           >
-            {key === "general" ? "通用与权限" : "模型提供商"}
+            {settingsSections[key]}
           </button>
         ))}
       </nav>
       <div className="wb-scroll">
         <div className="wb-form settings-section" hidden={section !== "general"}>
-          {errorBox(error || models.error || state.error)}
+          {errorBox(error)}
           <label>
             模型
             <select
               aria-label="设置模型"
-              value={state.value?.model ? JSON.stringify(state.value.model) : ""}
+              value={state?.model ? JSON.stringify(state.model) : ""}
               onChange={(e) => void update("model", JSON.parse(e.target.value))}
             >
               <option value="" disabled>
                 选择模型
               </option>
-              {models.value.map((m: any) => (
+              {models.map((m) => (
                 <option
                   key={m.provider + m.id}
                   value={JSON.stringify({ provider: m.provider, id: m.id })}
@@ -543,10 +618,10 @@ function SettingsView() {
           <label>
             推理强度
             <select
-              value={state.value?.thinkingLevel || ""}
+              value={state?.thinkingLevel || ""}
               onChange={(e) => void update("thinking", e.target.value)}
             >
-              {levels.value.map((l: string) => (
+              {levels.map((l) => (
                 <option key={l}>{l}</option>
               ))}
             </select>
@@ -567,9 +642,16 @@ function SettingsView() {
             这是 Pi 工具调用策略，不是操作系统沙箱。用户自行打开的终端不受 Agent 工具审批约束。
           </p>
         </div>
-        <div className="wb-form settings-section" hidden={section !== "models"}>
-          <Providers />
-        </div>
+        {opened.models && (
+          <div className="wb-form settings-section" hidden={section !== "models"}>
+            <Providers />
+          </div>
+        )}
+        {opened.prompt && (
+          <div hidden={section !== "prompt"}>
+            <BuiltinPromptEditor />
+          </div>
+        )}
         <div className="wb-form settings-section" hidden={section !== "general"}>
           <div className="wb-readonly">
             工作区<code>{value?.workspace}</code>
@@ -1144,26 +1226,42 @@ function renderTab(tab: any) {
   }
 }
 export function SidebarPanels() {
+  const { collapsed, workbenchOpen } = useLayout();
+  const { state } = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
+  const pane = state.nodes[state.activePaneId];
+  const activeTab = pane?.kind === "pane" && pane.activeTabId ? state.tabs[pane.activeTabId] : null;
   return (
     <div className={sidebarCss.panelList + " axiom-panel-list"}>
       {(["files", "terminal", "browser", "diff", "jobs", "resources"] as const).map((kind) => {
         const Icon = icons[kind];
+        const active = workbenchOpen && activeTab?.kind === kind;
         return (
-          <button
+          <div
             key={kind}
-            type="button"
-            className={sidebarCss.panelRow}
-            title={names[kind]}
-            aria-label={names[kind]}
-            onClick={() => {
-              openPanel(kind);
-            }}
+            className={[
+              sidebarCss.panelEntry,
+              !collapsed && sidebarCss.panelEntryWide,
+              active && sidebarCss.panelEntryActive,
+            ]
+              .filter(Boolean)
+              .join(" ")}
           >
-            <span className={sidebarCss.panelGlyph}>
-              <Icon size={16} />
-            </span>
-            <span className={sidebarCss.panelTitle}>{names[kind]}</span>
-          </button>
+            <button
+              type="button"
+              className={sidebarCss.panelRow}
+              title={names[kind]}
+              aria-label={names[kind]}
+              aria-current={active ? "page" : undefined}
+              onClick={() => {
+                openPanel(kind);
+              }}
+            >
+              <span className={sidebarCss.panelGlyph} aria-hidden="true">
+                <Icon size={collapsed ? 18 : 16} />
+              </span>
+              <span className={sidebarCss.panelTitle}>{names[kind]}</span>
+            </button>
+          </div>
         );
       })}
     </div>

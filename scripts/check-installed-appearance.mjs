@@ -14,6 +14,12 @@ try{
  const page=browser.contexts().flatMap(c=>c.pages()).find(p=>p.url().startsWith(base));assert.ok(page);
  const errors=[];page.on("pageerror",e=>errors.push(e.message));
  await page.waitForFunction(()=>document.querySelector("#status")?.textContent==="就绪",null,{timeout:30000});
+ await page.getByRole('button',{name:'Pi 会话'}).click();
+ const sessionControls=page.getByRole('dialog',{name:'Pi 会话'});
+ await sessionControls.locator('pre').waitFor();
+ await sessionControls.getByLabel('操作').selectOption('rename');
+ await sessionControls.getByLabel('会话名称').waitFor();
+ await sessionControls.getByRole('button',{name:'关闭'}).click();
  await page.evaluate(()=>localStorage.setItem("axiom.appearance","light"));await page.reload();
  await page.locator("#theme-toggle svg").waitFor();
  assert.equal(await page.locator("body").getAttribute("data-ds-dark-theme"),null);
@@ -41,6 +47,19 @@ try{
  await capture(page,'settings.png');
  await page.getByRole('button',{name:'通用与权限',exact:true}).click();
  await page.getByLabel('权限模式').waitFor();
+ await page.getByRole('button',{name:'内置提示词',exact:true}).click();
+ const builtin = page.getByLabel('内置提示词',{exact:true});
+ await builtin.waitFor();
+ await page.waitForFunction(()=>document.querySelector('.settings-section textarea')?.disabled===false);
+ const defaultPrompt = await builtin.inputValue();
+ await builtin.fill('Installer prompt fixture');
+ await page.getByRole('button',{name:'保存提示词'}).click();
+ await page.getByText('已保存',{exact:true}).waitFor();
+ assert.equal((await (await page.request.get(base+'/api/builtin-prompt')).json()).text,'Installer prompt fixture');
+ await page.getByRole('button',{name:'恢复默认'}).click();
+ assert.equal(await builtin.inputValue(),defaultPrompt);
+ await page.getByRole('button',{name:'保存提示词'}).click();
+ await page.getByText('已保存',{exact:true}).waitFor();
  await page.locator('#sidebar-panels').getByRole('button',{name:'任务与计划',exact:true}).click();
  await page.getByLabel('DAG 节点').waitFor();
  await capture(page,'jobs.png');
@@ -73,7 +92,11 @@ try{
  await prompt.locator('[data-composer-chip]').waitFor({state:'detached'});
  await prompt.fill('');
  // Inject a test-only history response, never submit a model prompt or credential.
- await page.route("**/api/messages",route=>route.fulfill({json:[{role:"assistant",content:[{type:"text",text:"Fixture quote to reference"}]},{role:"user",content:[{type:"text",text:"fixture ghp_"+"A".repeat(36)}]},{role:"toolResult",toolCallId:"delivery-fixture",toolName:"present_files",content:[{type:"text",text:"Presented to user: axiom-fixture.txt"}],details:{kind:"axiom-deliverables-v1",files:[{path:"axiom-fixture.txt",size:20}]}}]}));
+ const fixtureSnapshot = (patch) => page.route("**/api/snapshot",async route=>{
+  const response=await route.fetch();
+  await route.fulfill({response,json:{...await response.json(),...patch()}});
+ });
+ await fixtureSnapshot(()=>({messages:[{role:"assistant",content:[{type:"text",text:"Fixture quote to reference"}]},{role:"user",content:[{type:"text",text:"fixture ghp_"+"A".repeat(36)}]},{role:"toolResult",toolCallId:"delivery-fixture",toolName:"present_files",content:[{type:"text",text:"Presented to user: axiom-fixture.txt"}],details:{kind:"axiom-deliverables-v1",files:[{path:"axiom-fixture.txt",size:20}]}}]}));
  await page.reload();
  const reply=page.locator("#transcript article.assistant").first();
  await reply.hover();
@@ -91,12 +114,12 @@ try{
  await page.getByRole("button",{name:"预览 axiom-fixture.txt"}).waitFor();
  await page.getByRole("button",{name:"预览 axiom-fixture.txt"}).click();
  await page.locator(".inspector").waitFor();
- await page.unroute("**/api/messages");await page.reload();
+ await page.unroute("**/api/snapshot");await page.reload();
  // Browser-only recovery fixture: no new model run or permission request.
  const request={kind:"questions",questions:[{id:"q1",question:"Fixture choice",options:[{label:"Pick A"}]},{id:"q2",question:"Fixture custom"}]};
  const dialog={id:"fixture-question-draft",method:"editor",title:"Axiom structured interaction v1",prefill:JSON.stringify(request)};
  let live=[dialog], response;
- await page.route("**/api/dialogs",route=>route.fulfill({json:live}));
+ await fixtureSnapshot(()=>({dialogs:live}));
  await page.route("**/api/ui-response",route=>{response=route.request().postDataJSON();live=[];return route.fulfill({json:{ok:true}});});
  await page.reload();
  await page.getByRole("button",{name:/Pick A/}).click();
@@ -109,7 +132,7 @@ try{
  await page.getByText("Fixture custom",{exact:true}).waitFor({state:"detached"});
  assert.deepEqual(JSON.parse(response.value).answers.map(a=>({id:a.id,selected:a.selected,custom:a.custom})),[{id:"q1",selected:["Pick A"],custom:""},{id:"q2",selected:[],custom:"draft survives reload"}]);
  assert.equal(await page.evaluate(()=>sessionStorage.getItem("axiom.question-draft.v1:fixture-question-draft")),null);
- await page.unroute("**/api/dialogs");await page.unroute("**/api/ui-response");
+ await page.unroute("**/api/snapshot");await page.unroute("**/api/ui-response");
  await page.reload();
  await capture(page,'composer-features.png');
  assert.deepEqual(errors,[]);console.log("HARNESS_UI_RENDER_PASS",JSON.stringify(a));

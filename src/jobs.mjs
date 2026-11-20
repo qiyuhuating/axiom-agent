@@ -167,6 +167,8 @@ async function run(worker) {
         resolve(root, "src/approval.ts"),
         "--extension",
         resolve(root, "src/providers.ts"),
+        "--extension",
+        resolve(root, "src/builtin-prompt.ts"),
         ...(config.maxOutputTokens ? ["--extension", resolve(root, "src/output-budget.ts")] : []),
       ],
       env: {
@@ -179,6 +181,7 @@ async function run(worker) {
         AXIOM_TEAM_TOKEN: worker.token,
         AXIOM_PROVIDER_FILE: resolve(config.sessionDir, "axiom-providers.json"),
         AXIOM_PERMISSION_FILE: policy,
+        AXIOM_BUILTIN_PROMPT_FILE: resolve(config.sessionDir, "builtin-prompt.json"),
         AXIOM_MAX_OUTPUT_TOKENS: String(config.maxOutputTokens ?? ""),
       },
     });

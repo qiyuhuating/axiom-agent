@@ -26,13 +26,13 @@ import {
   PlanDock,
   TraceLedger,
 } from "./harness-features.tsx";
-import { api } from "./panel-shared.tsx";
 import {
   action,
   addFiles,
   changeSession,
   connect,
   loadOptions,
+  type Message,
   refresh,
   removeAttachment,
   run,
@@ -41,6 +41,7 @@ import {
   useProjection,
 } from "./projection.ts";
 import { UserText } from "./secret-view.tsx";
+import { SessionControls } from "./session-controls.tsx";
 import { layoutActions, useLayout } from "./shell-layout.ts";
 import { DialogView, openPanel, SidebarPanels, Workbench } from "./workbench.tsx";
 
@@ -54,6 +55,56 @@ const MarkdownMessage = memo(function MarkdownMessage({ text }: { text: string }
     <div className="markdown" dangerouslySetInnerHTML={{ __html: markdown.render(text) }} />
   );
 });
+const TranscriptMessages = memo(function TranscriptMessages({
+  messages,
+  sessionId,
+  locked,
+  onQuote,
+}: {
+  messages: Message[];
+  sessionId?: string;
+  locked: boolean;
+  onQuote: (text: string) => void;
+}) {
+  return messages.map((message, index) => {
+    const text = textOf(message.content) || message.errorMessage || "";
+    if (!text) return null;
+    return (
+      <article key={(sessionId ?? "") + ":" + index} className={message.role}>
+        <b>{message.role === "user" ? "你" : "Axiom"}</b>
+        {message.role === "assistant" ? (
+          <>
+            <MarkdownMessage text={text} />
+            <button
+              type="button"
+              className="quote-message"
+              title="引用此回复"
+              disabled={locked}
+              onClick={(event) => {
+                const selection = window.getSelection();
+                const article = event.currentTarget.closest("article");
+                const selected = selection?.toString().trim();
+                const within =
+                  selection?.anchorNode &&
+                  selection.focusNode &&
+                  article?.contains(selection.anchorNode) &&
+                  article.contains(selection.focusNode);
+                onQuote(within && selected ? selected : text);
+                selection?.removeAllRanges();
+              }}
+            >
+              引用
+            </button>
+          </>
+        ) : (
+          <UserMessageBubble>
+            <UserText text={text} />
+          </UserMessageBubble>
+        )}
+      </article>
+    );
+  });
+});
 function App() {
   const p = useProjection(),
     l = useLayout();
@@ -61,7 +112,12 @@ function App() {
     transcript = useRef<HTMLElement>(null);
   const [quote, setQuote] = useState<{ text: string; id: number } | null>(null);
   const clearQuote = useCallback(() => setQuote(null), []);
+  const selectQuote = useCallback(
+    (text: string) => setQuote({ text: text.slice(0, 16000), id: Date.now() }),
+    [],
+  );
   const [queue, setQueue] = useState("steer");
+  const [sessionControlsOpen, setSessionControlsOpen] = useState(false);
   const [mode, setMode] = useState(() => localStorage.getItem("axiom.appearance") || "system");
   const [systemDark, setSystemDark] = useState(
     () => matchMedia("(prefers-color-scheme: dark)").matches,
@@ -83,6 +139,14 @@ function App() {
     layoutActions.apply(l);
   }, [l]);
   useEffect(() => {
+    if (!l.drawer) return;
+    const close = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !event.defaultPrevented) layoutActions.closeDrawer();
+    };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [l.drawer]);
+  useEffect(() => {
     const resized = () => layoutActions.resize(window.innerWidth);
     window.addEventListener("resize", resized);
     return () => window.removeEventListener("resize", resized);
@@ -96,49 +160,16 @@ function App() {
     localStorage.setItem("axiom.appearance", next);
     setMode(next);
   };
-  async function sessionActions() {
-    const detail = await api("session-details");
-    const choice = window.prompt(
-      "Pi: rename / clone / fork / compact / stats / auto-compaction / auto-retry / steering-mode / follow-up-mode",
-      "stats",
-    );
-    if (!choice) return;
-    if (choice === "stats") {
-      window.alert(JSON.stringify(detail.stats, null, 2));
-      return;
-    }
-    if (choice === "rename") {
-      const name = window.prompt("Session name");
-      if (name?.trim()) await changeSession("rename", name);
-      return;
-    }
-    if (choice === "fork") {
-      const i = window.prompt(
-        detail.forks.map((m: any, i: number) => i + 1 + ": " + m.text.slice(0, 100)).join("\n"),
-      );
-      const f = detail.forks[Number(i) - 1];
-      if (f && window.confirm("Fork from selected message?"))
-        await changeSession("fork", f.entryId);
-      return;
-    }
-    if (choice === "clone" || choice === "compact") {
-      if (window.confirm(choice + " current session?")) await changeSession(choice);
-      return;
-    }
-    if (["auto-compaction", "auto-retry"].includes(choice)) {
-      const v = window.prompt("true / false");
-      if (v && ["true", "false"].includes(v)) await changeSession(choice, v === "true");
-      return;
-    }
-    if (["steering-mode", "follow-up-mode"].includes(choice)) {
-      const v = window.prompt("all / one-at-a-time");
-      if (v) await changeSession(choice, v);
-      return;
-    }
-    throw Error("Unknown Pi command");
-  }
   return (
     <>
+      {l.drawer && (
+        <button
+          type="button"
+          className="sidebar-backdrop"
+          aria-label="关闭侧栏"
+          onClick={layoutActions.closeDrawer}
+        />
+      )}
       <aside
         className={"sidebar " + sidebarCss.root + (l.collapsed ? " " + sidebarCss.collapsed : "")}
       >
@@ -237,8 +268,9 @@ function App() {
             <button
               id="session-actions"
               type="button"
+              aria-label="Pi 会话"
               disabled={locked}
-              onClick={() => void run(sessionActions)}
+              onClick={() => setSessionControlsOpen(true)}
             >
               Pi
             </button>
@@ -262,47 +294,12 @@ function App() {
               <p>理解代码、实现功能、验证工程，或者普通对话</p>
             </div>
           )}
-          {p.messages.map((m, i) => {
-            const text = textOf(m.content) || m.errorMessage || "";
-            if (!text) return null;
-            return (
-              <article key={(p.state?.sessionId ?? "") + ":" + i} className={m.role}>
-                <b>{m.role === "user" ? "你" : "Axiom"}</b>
-                {m.role === "assistant" ? (
-                  <>
-                    <MarkdownMessage text={text} />
-                    <button
-                      type="button"
-                      className="quote-message"
-                      title="引用此回复"
-                      disabled={locked}
-                      onClick={() => {
-                        const selected = window.getSelection();
-                        const article = transcript.current;
-                        const selection = selected?.toString().trim();
-                        const within =
-                          selected?.anchorNode &&
-                          selected?.focusNode &&
-                          article?.contains(selected.anchorNode) &&
-                          article.contains(selected.focusNode);
-                        setQuote({
-                          text: (within && selection ? selection : text).slice(0, 16000),
-                          id: Date.now(),
-                        });
-                        selected?.removeAllRanges();
-                      }}
-                    >
-                      引用
-                    </button>
-                  </>
-                ) : (
-                  <UserMessageBubble>
-                    <UserText text={text} />
-                  </UserMessageBubble>
-                )}
-              </article>
-            );
-          })}
+          <TranscriptMessages
+            messages={p.messages}
+            sessionId={p.state?.sessionId}
+            locked={locked}
+            onQuote={selectQuote}
+          />
           <ObservedChanges tools={p.tools} />
           <DeliverableCards tools={p.tools} />
           {p.stream && (
@@ -471,6 +468,7 @@ function App() {
       <div id="dialog-root">
         {p.dialogs[0] && <DialogView key={p.dialogs[0].id} dialog={p.dialogs[0]} />}
       </div>
+      {sessionControlsOpen && <SessionControls onClose={() => setSessionControlsOpen(false)} />}
       <div id="wb-notice" role="status" hidden={!p.notice}>
         {p.notice}
       </div>

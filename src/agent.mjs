@@ -19,6 +19,7 @@ export class Agent {
     this.#makeClient = makeClient;
   }
   #changing = false;
+  #sessionRevision = 0;
   #dialogs = new Map();
   get busy() {
     return this.#busy;
@@ -47,6 +48,8 @@ export class Agent {
         "--extension",
         resolve(root, "src/providers.ts"),
         "--extension",
+        resolve(root, "src/builtin-prompt.ts"),
+        "--extension",
         resolve(root, "src/deliverables.ts"),
         "--extension",
         resolve(root, "src/interactions.ts"),
@@ -59,6 +62,7 @@ export class Agent {
         AXIOM_MAX_OUTPUT_TOKENS: String(config.maxOutputTokens ?? ""),
         AXIOM_PROVIDER_FILE: resolve(config.sessionDir, "axiom-providers.json"),
         AXIOM_PERMISSION_FILE: resolve(config.sessionDir, "permission.json"),
+        AXIOM_BUILTIN_PROMPT_FILE: resolve(config.sessionDir, "builtin-prompt.json"),
       },
     });
     this.#client = client;
@@ -126,7 +130,9 @@ export class Agent {
   }
   async state() {
     await this.start();
-    const state = await this.#rememberSession(this.#client);
+    return this.#projectState(await this.#rememberSession(this.#client));
+  }
+  #projectState(state) {
     return {
       model: state.model && {
         provider: state.model.provider,
@@ -136,6 +142,28 @@ export class Agent {
       busy: this.#busy,
       sessionId: state.sessionId,
       workspace: config.workspace,
+    };
+  }
+  async snapshot() {
+    await this.start();
+    const client = this.#client;
+    const revision = this.#sessionRevision;
+    if (revision % 2) throw Error("Session change in progress");
+    const [state, messages, tree, sessions] = await Promise.all([
+      client.getState(),
+      client.getMessages(),
+      client.getTree(),
+      this.sessions(),
+    ]);
+    if (client !== this.#client || revision !== this.#sessionRevision)
+      throw Error("Session changed while reading its snapshot");
+    this.#sessionId = state.sessionId;
+    return {
+      state: this.#projectState(state),
+      messages: messages.filter((m) => m.role !== "system"),
+      sessions,
+      dialogs: this.pendingDialogs(),
+      harness: { sessionId: state.sessionId, ...projectHarness(tree) },
     };
   }
   async harnessState() {
@@ -200,8 +228,10 @@ export class Agent {
     await this.start();
     return this.#client.clearQueue();
   }
-  async sessionDetails() {
+  async sessionDetails(view) {
     await this.start();
+    if (view === "stats") return { stats: await this.#client.getSessionStats() };
+    if (view === "forks") return { forks: await this.#client.getForkMessages() };
     const [stats, forks, tree] = await Promise.all([
       this.#client.getSessionStats(),
       this.#client.getForkMessages(),
@@ -231,6 +261,7 @@ export class Agent {
     if (this.#busy || this.#changing)
       throw new Error("Stop current run or wait for the session change.");
     this.#changing = true;
+    this.#sessionRevision++;
     try {
       if (action === "new")
         return await this.#sessionChange(this.#client, this.#client.newSession());
@@ -285,6 +316,7 @@ export class Agent {
       if (action === "thinking") return await this.#client.setThinkingLevel(value);
       throw new Error("Unknown action");
     } finally {
+      this.#sessionRevision++;
       this.#changing = false;
       if (
         [

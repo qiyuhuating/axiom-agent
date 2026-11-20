@@ -9,7 +9,7 @@ export type Dialog = {
   placeholder?: string;
   prefill?: string;
 };
-type Message = {
+export type Message = {
   role: string;
   content: any;
   errorMessage?: string;
@@ -128,6 +128,9 @@ export const getSnapshot = () => snapshot;
 export function useProjection() {
   return useSyncExternalStore(subscribe, getSnapshot);
 }
+export function useProjectionField<K extends keyof Snapshot>(key: K): Snapshot[K] {
+  return useSyncExternalStore(subscribe, () => snapshot[key]);
+}
 export const setDraft = (draft: string) => {
   if (draft !== snapshot.draft) update({ draft });
 };
@@ -214,13 +217,7 @@ export async function refresh() {
   pendingEvents = [];
   update({ syncing: true });
   try {
-    const [state, messages, sessions, dialogs, harness] = await Promise.all([
-      api("state"),
-      api("messages"),
-      api("sessions"),
-      api("dialogs"),
-      api("harness"),
-    ]);
+    const { state, messages, sessions, dialogs, harness } = await api("snapshot");
     if (id !== generation) return;
     const switched = snapshot.state?.sessionId !== state.sessionId;
     const live = new Set(dialogs.map((d: Dialog) => "axiom.question-draft.v1:" + d.id));
@@ -266,6 +263,13 @@ export async function refresh() {
       for (const e of buffered) handleEvent(e);
     }
     if (switched) window.dispatchEvent(new Event("axiom:session"));
+  } catch (error) {
+    if (id !== generation) return;
+    if (pendingEvents?.some((event) => event.type === "state_changed")) {
+      queueMicrotask(() => void run(refresh));
+      return;
+    }
+    throw error;
   } finally {
     if (id === generation) {
       pendingEvents = null;
