@@ -70,36 +70,35 @@ function addJob(
 function pump() {
   if (closing) return;
   while (workers.size < 3) {
-    // Do not overlap writable jobs with any other worker sharing the workspace.
-    let changed;
+    const queued = state.jobs.filter((j) => j.status === "queued");
+    if (!queued.length) return;
+    const jobsById = new Map(state.jobs.map((j) => [j.id, j]));
+    let blocked = false,
+      changed;
     do {
       changed = false;
-      for (const j of state.jobs.filter((x) => x.status === "queued")) {
+      for (const j of queued) {
+        if (j.status !== "queued") continue;
         if (
-          (j.blockedBy ?? []).some(
-            (id) =>
-              !state.jobs.some((x) => x.id === id) ||
-              ["failed", "cancelled", "interrupted", "blocked"].includes(
-                state.jobs.find((x) => x.id === id)?.status,
-              ),
-          )
+          (j.blockedBy ?? []).some((id) => {
+            const dep = jobsById.get(id);
+            return !dep || ["failed", "cancelled", "interrupted", "blocked"].includes(dep.status);
+          })
         ) {
           j.status = "blocked";
           j.error = "Dependency did not complete";
           changed = true;
-          persist();
+          blocked = true;
         }
       }
     } while (changed);
-    const next = state.jobs
-      .filter(
-        (j) =>
-          j.status === "queued" &&
-          (j.blockedBy ?? []).every(
-            (id) => state.jobs.find((x) => x.id === id)?.status === "completed",
-          ),
-      )
-      .at(-1);
+    if (blocked) persist();
+    const next = queued.findLast(
+      (j) =>
+        j.status === "queued" &&
+        (j.blockedBy ?? []).every((id) => jobsById.get(id)?.status === "completed"),
+    );
+    // Do not overlap writable jobs with any other worker sharing the workspace.
     if (!next || [...workers.values()].some((w) => w.job.write) || (next.write && workers.size > 0))
       return;
     const worker = {

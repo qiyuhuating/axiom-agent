@@ -5,22 +5,13 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import { config, root } from "./config.mjs";
-import { runtimePort, runtimeToken } from "./runtime-auth.mjs";
+import { runtimeToken } from "./runtime-auth.mjs";
 import { createCordisTerminalAdapter } from "./terminal-cordis.mjs";
 
 // Experimental backend; the existing job runtime and native Node PTY remain
 // the default. A distinct archive prevents two processes writing one history.
 export async function createRustTerminalBackend() {
   const port = config.rustTerminalPort;
-  if (
-    !Number.isInteger(port) ||
-    port < 1024 ||
-    port > 65535 ||
-    port === runtimePort ||
-    port === config.port
-  ) {
-    throw Error("A distinct rustTerminalPort is required");
-  }
   const binary = resolve(
     root,
     config.rustTerminalBinary ||
@@ -33,6 +24,7 @@ export async function createRustTerminalBackend() {
     try {
       const r = await fetch(base + "/api/runtime-health", {
         headers,
+        redirect: "error",
         signal: AbortSignal.timeout(1000),
       });
       if (!r.ok) return false;
@@ -88,6 +80,7 @@ export async function createRustTerminalBackend() {
         ...(body === undefined ? {} : { "Content-Type": "application/json" }),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
+      redirect: "error",
       signal: AbortSignal.timeout(10000),
     });
     const result = await r.json();
@@ -107,7 +100,7 @@ export async function createRustTerminalBackend() {
       const close = () => abort.abort();
       res.on("close", close);
       try {
-        const r = await fetch(base + req.url, { headers, signal: abort.signal });
+        const r = await fetch(base + req.url, { headers, signal: abort.signal, redirect: "error" });
         res.writeHead(r.status, {
           "Content-Type": r.headers.get("content-type") || "application/json",
           "Cache-Control": "no-store",
@@ -124,6 +117,7 @@ export async function createRustTerminalBackend() {
       const r = await fetch(base + "/api/runtime-stop", {
         method: "POST",
         headers,
+        redirect: "error",
         signal: AbortSignal.timeout(5000),
       });
       if (!r.ok) throw Error("Rust terminal shutdown failed");

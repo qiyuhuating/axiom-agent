@@ -1,33 +1,19 @@
 import { createServer } from "node:http";
 import { config } from "./config.mjs";
 import { createRuntimeContext } from "./cordis-runtime.mjs";
+import { body, healthStats, json, requestError, requestUrl } from "./http.mjs";
 import { runtimePort, runtimeToken } from "./runtime-auth.mjs";
 
 let jobs, term, ctx;
-function json(res, data, status = 200) {
-  res.writeHead(status, {
-    "Content-Type": "application/json",
-    "Cache-Control": "no-store",
-  });
-  res.end(JSON.stringify(data));
-}
-async function body(req) {
-  let text = "";
-  req.setEncoding("utf8");
-  for await (const chunk of req) {
-    text += chunk;
-    if (text.length > 2 * 1024 * 1024) throw Error("Runtime request too large");
-  }
-  return JSON.parse(text);
-}
 const server = createServer(async (req, res) => {
-  const url = new URL(req.url, "http://localhost"),
-    path = url.pathname,
-    token = req.headers.authorization?.replace(/^Bearer /, "");
+  const auth = req.headers.authorization;
+  const token = auth?.startsWith("Bearer ") ? auth.slice(7) : undefined;
   if (req.headers.host !== "127.0.0.1:" + runtimePort)
     return json(res, { error: "Invalid host" }, 403);
   if (!ctx) return json(res, { error: "Initializing" }, 503);
   try {
+    const url = requestUrl(req);
+    const path = url.pathname;
     if (path === "/api/team-tool" && req.method === "POST")
       return json(res, ctx.axiomJobs.teamTool(token, await body(req)));
     if (token !== runtimeToken) return json(res, { error: "Unauthorized" }, 403);
@@ -35,8 +21,11 @@ const server = createServer(async (req, res) => {
       if (path === "/api/runtime-health")
         return json(res, {
           ok: true,
+          ...healthStats(),
           pid: process.pid,
           protocol: 1,
+          workspace: config.workspace,
+          sessionDir: config.sessionDir,
           terminalBackend: config.terminalBackend,
         });
       if (path === "/api/jobs") return json(res, ctx.axiomJobs.state());
@@ -81,8 +70,7 @@ const server = createServer(async (req, res) => {
     }
     json(res, { error: "Not found" }, 404);
   } catch (e) {
-    if (!res.headersSent) json(res, { error: e.message }, 400);
-    else res.destroy();
+    requestError("runtime", req, res, e);
   }
 });
 server.on("error", (e) => {

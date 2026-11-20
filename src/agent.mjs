@@ -325,7 +325,7 @@ export class Agent {
         return await this.#sessionChange(this.#client, this.#client.fork(value));
       }
       if (action === "compact")
-        return this.#client.compact(typeof value === "string" ? value : undefined);
+        return await this.#client.compact(typeof value === "string" ? value : undefined);
       if (action === "auto-compaction" || action === "auto-retry") {
         if (typeof value !== "boolean") throw Error("Boolean required");
         await (action === "auto-compaction"

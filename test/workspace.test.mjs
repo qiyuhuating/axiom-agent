@@ -17,6 +17,11 @@ test('workspace editing, revision checks and attachment isolation',async()=>{
   assert.equal((await openFile('hello.txt')).revision,saved.revision);
   await assert.rejects(saveFile({path:'hello.txt',text:'lost',revision:initial.revision}),/changed on disk/);
   assert.equal(await readFile(join(workspace,'hello.txt'),'utf8'),'second');
+  const writes=await Promise.allSettled(["alpha","bravo"].map(text=>saveFile({path:"hello.txt",text,revision:saved.revision})));
+  assert.equal(writes.filter(x=>x.status==="fulfilled").length,1);
+  assert.equal(writes.find(x=>x.status==="rejected").reason.status,409);
+  await writeFile(join(workspace,"large.txt"),Buffer.alloc(2*1024*1024));
+  assert.deepEqual(await openFile("large.txt"),{kind:"binary",size:2*1024*1024});
   await assert.rejects(openFile('../config.json'),/Outside workspace/);
   await assert.rejects(upload({name:'../bad.txt',data:'YQ=='}),/Invalid attachment/);
   const attached=await upload({name:'test.txt',data:'YQ=='});

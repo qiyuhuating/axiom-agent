@@ -627,10 +627,13 @@ function SettingsView() {
             Agent 权限
             <select
               aria-label="权限模式"
-              value={value?.permission || "full"}
+              value={value?.permission ?? ""}
               onChange={(e) => void mode(e.target.value)}
             >
-              <option value="full">完全信任（现有行为）</option>
+              <option value="" disabled>
+                选择权限模式
+              </option>
+              <option value="full">完全信任</option>
               <option value="ask">非只读工具逐次审批</option>
               <option value="read-only">只读工具</option>
             </select>
