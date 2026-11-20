@@ -30,6 +30,8 @@ public/markdown.js
 src-tauri/target/
 src-tauri/gen/
 daemon/target/
+benchmarks/target/
+benchmarks/results/
 
 public/app.js
 public/app.css
