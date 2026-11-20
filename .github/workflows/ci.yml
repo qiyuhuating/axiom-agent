@@ -21,6 +21,23 @@ jobs:
       - name: Build Windows x64 NSIS installer
         run: npm run desktop:build
       - run: node scripts/check-desktop-runtime.mjs
+      - name: Native terminal migration parity
+        shell: pwsh
+        run: |
+          $env:AXIOM_TEST_DAEMON = (Resolve-Path .desktop-runtime/bin/axiom-daemon.exe).Path
+          $env:AXIOM_TEST_RUNTIME_ROOT = (Resolve-Path .desktop-runtime).Path
+          & .desktop-runtime/bin/node.exe --test scripts/check-terminal-parity.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Rust HTTP ingress parity
+        shell: pwsh
+        run: |
+          $env:AXIOM_TEST_GATEWAY = (Resolve-Path .desktop-runtime/bin/axiom-daemon.exe).Path
+          $env:AXIOM_TEST_RUNTIME_ROOT = (Resolve-Path .desktop-runtime).Path
+          $env:AXIOM_TEST_DAEMON = $env:AXIOM_TEST_GATEWAY
+          & .desktop-runtime/bin/node.exe --test --test-name-pattern "HTTP host" test/core-integration.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & .desktop-runtime/bin/node.exe --test --test-name-pattern "workbench routes" scripts/check-terminal-parity.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify installer and generate checksums
         shell: pwsh
         run: |
@@ -34,6 +51,19 @@ jobs:
             "$hash  $($installer.Name)"
           }
           $checksums | Set-Content dist/SHA256SUMS.txt -Encoding utf8
+      - name: Smoke test the installed Windows desktop
+        shell: pwsh
+        timeout-minutes: 8
+        run: |
+          # WebView2 ignores CDP arguments on elevated hosts (wry#1782).
+          winget install --id gerardog.gsudo --exact --version 2.6.1 --silent --accept-source-agreements --accept-package-agreements
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:Path += ';' + [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+          npm install --prefix "$env:RUNNER_TEMP/axiom-smoke" --no-save --no-package-lock playwright@1.58.2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:AXIOM_TEST_PLAYWRIGHT_MODULE = Join-Path $env:RUNNER_TEMP 'axiom-smoke/node_modules/playwright/index.mjs'
+          gsudo --integrity Medium pwsh -NoProfile -File ./scripts/check-installed-desktop.ps1
+          exit $LASTEXITCODE
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:

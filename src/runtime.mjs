@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { config } from "./config.mjs";
 import { createRuntimeContext } from "./cordis-runtime.mjs";
 import { runtimePort, runtimeToken } from "./runtime-auth.mjs";
 
@@ -32,10 +33,16 @@ const server = createServer(async (req, res) => {
     if (token !== runtimeToken) return json(res, { error: "Unauthorized" }, 403);
     if (req.method === "GET") {
       if (path === "/api/runtime-health")
-        return json(res, { ok: true, pid: process.pid, protocol: 1 });
+        return json(res, {
+          ok: true,
+          pid: process.pid,
+          protocol: 1,
+          terminalBackend: config.terminalBackend,
+        });
       if (path === "/api/jobs") return json(res, ctx.axiomJobs.state());
-      if (path === "/api/terminals") return json(res, ctx.axiomTerminal.list());
+      if (path === "/api/terminals") return json(res, await ctx.axiomTerminal.listAsync());
       if (path === "/api/terminal/events") {
+        if (term.streamTerminal) return await term.streamTerminal(req, res);
         const t = ctx.axiomTerminal.get(url.searchParams.get("id"));
         res.writeHead(200, {
           "Content-Type": "text/event-stream",
@@ -65,7 +72,7 @@ const server = createServer(async (req, res) => {
       const { action, value } = await body(req);
       if (path === "/api/job-action") return json(res, await ctx.axiomJobs.action(action, value));
       if (path === "/api/terminal-action")
-        return json(res, ctx.axiomTerminal.action(action, value));
+        return json(res, await ctx.axiomTerminal.actionAsync(action, value));
       if (path === "/api/runtime-stop") {
         json(res, { ok: true });
         void shutdown();
@@ -86,7 +93,13 @@ server.listen(runtimePort, "127.0.0.1", async () => {
   // Only the process that wins the listener may open durable state.
   try {
     process.env.AXIOM_TEAM_PORT = String(runtimePort);
-    [jobs, term] = await Promise.all([import("./jobs.mjs"), import("./terminal.mjs")]);
+    jobs = await import("./jobs.mjs");
+    if (config.terminalBackend === "rust") {
+      const { createRustTerminalBackend } = await import("./terminal-rust.mjs");
+      term = await createRustTerminalBackend();
+    } else {
+      term = await import("./terminal.mjs");
+    }
     ctx = await createRuntimeContext(jobs, term);
     console.log("Axiom runtime listening " + runtimePort);
   } catch (e) {
@@ -98,7 +111,11 @@ let stopping = false;
 async function shutdown() {
   if (stopping) return;
   stopping = true;
-  term?.closeTerminals();
+  try {
+    await term?.closeTerminals();
+  } catch (error) {
+    console.error("Terminal shutdown:", error.message);
+  }
   await jobs?.closeJobs();
   await ctx?.fiber.dispose();
   server.close();

@@ -1,0 +1,26 @@
+[package]
+name = "axiom-daemon"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+axum = "=0.8.9"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "sync", "time", "signal"] }
+portable-pty = "=0.9.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+async-stream = "0.3"
+uuid = { version = "1", features = ["v4"] }
+tempfile = "3"
+anyhow = "1"
+hyper-util = { version = "0.1", features = ["client-legacy", "http1", "tokio"] }
+
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3.9", features = ["jobapi2", "winnt"] }
+
+[profile.release]
+lto = "thin"
+strip = true
+codegen-units = 1

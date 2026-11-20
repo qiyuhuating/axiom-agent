@@ -44,7 +44,7 @@ cargo check --locked --manifest-path src-tauri/Cargo.toml
 npm run desktop:build
 ```
 
-The NSIS build stages a checksum-verified Node.js 24.16.0 distribution and npm, production dependencies, and compiled UI. It excludes build-only frontend dependencies, non-x64 terminal binaries, and terminal debug symbols. The desktop app stores configuration and sessions under its local app data directory, uses a dynamically assigned loopback HTTP port, and retains the separate background runtime (default desktop runtime port 4798). PowerShell 7 and Git remain external tools. The runtime payload and Rust compile check have been verified on Windows x64; complete installer and WebView interaction validation remain pending.
+The NSIS build stages a checksum-verified Node.js 24.16.0 distribution and npm, production dependencies, and compiled UI. It excludes build-only frontend dependencies and node-pty; the Rust terminal daemon provides the native PTY. Before upgrading, finish active jobs and terminals, then stop the installed background runtime using the existing authenticated runtime:stop command with its desktop configuration. The desktop app stores configuration and sessions under its local app data directory, uses a dynamically assigned loopback HTTP port, and retains the separate background runtime (default desktop runtime port 4798). PowerShell 7 and Git remain external tools. The preceding Windows CI installer passed native WebView2 acceptance. The legacy terminal remains a development-only parity baseline; Windows desktop uses the native Rust terminal by default. The separate POSIX sandbox and process-tree implementation remain unverified.
 
 ## Architecture
 

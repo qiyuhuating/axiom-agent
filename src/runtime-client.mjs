@@ -7,17 +7,30 @@ import { runtimeToken, runtimeUrl } from "./runtime-auth.mjs";
 
 const auth = { Authorization: "Bearer " + runtimeToken };
 async function health() {
+  let info;
   try {
     const r = await fetch(runtimeUrl + "/api/runtime-health", {
       headers: auth,
       signal: AbortSignal.timeout(1000),
     });
     if (!r.ok) return false;
-    const h = await r.json();
-    return h.ok && h.protocol === 1;
+    info = await r.json();
   } catch {
     return false;
   }
+  if (!info.ok || info.protocol !== 1) return false;
+  // Older runtimes predate Rust PTY and therefore imply the Node backend.
+  const activeBackend = info.terminalBackend ?? "node";
+  if (activeBackend !== config.terminalBackend) {
+    throw Error(
+      "Running terminal backend is " +
+        activeBackend +
+        "; configured backend is " +
+        config.terminalBackend +
+        ". Close active work and stop the existing runtime before switching.",
+    );
+  }
+  return true;
 }
 let starting;
 export async function ensureRuntime() {

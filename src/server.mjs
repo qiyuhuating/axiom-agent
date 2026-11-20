@@ -14,6 +14,12 @@ import {
 } from "./settings.mjs";
 import { gitDiff, listFiles, openFile, saveFile, upload } from "./workspace.mjs";
 
+const gatewayPort = process.env.AXIOM_GATEWAY_PORT;
+const gatewaySecret = process.env.AXIOM_GATEWAY_SECRET;
+delete process.env.AXIOM_GATEWAY_PORT;
+delete process.env.AXIOM_GATEWAY_SECRET;
+if (Boolean(gatewayPort) !== Boolean(gatewaySecret))
+  throw Error("Incomplete gateway configuration");
 const agent = new Agent();
 const assets = new Map([
   ["/", ["index.html", "text/html"]],
@@ -45,7 +51,10 @@ async function body(req) {
 }
 const server = createServer(async (req, res) => {
   const host = req.headers.host;
-  if (host !== "127.0.0.1:" + config.port && host !== "localhost:" + config.port)
+  if (gatewaySecret && req.headers["x-axiom-gateway-secret"] !== gatewaySecret)
+    return json(res, { error: "Private gateway authentication required" }, 403);
+  const publicPort = gatewayPort || config.port;
+  if (host !== "127.0.0.1:" + publicPort && host !== "localhost:" + publicPort)
     return json(res, { error: "Invalid host" }, 403);
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader(
