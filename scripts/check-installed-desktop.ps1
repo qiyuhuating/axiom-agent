@@ -5,7 +5,7 @@ if ($installers.Count -ne 1) { throw 'Expected one Windows x64 NSIS installer in
 
 $dataDir = Join-Path $env:LOCALAPPDATA 'io.github.qiyuhuating.axiom'
 if (Test-Path $dataDir) { throw "The app data directory already exists: $dataDir" }
-$installDir = Join-Path $env:RUNNER_TEMP 'Axiom Installer Smoke'
+$installDir = Join-Path $env:LOCALAPPDATA 'Temp/Axiom Installer Smoke'
 $legacyPackage = Join-Path $installDir 'runtime/node_modules/node-pty'
 $legacySource = Join-Path $installDir 'runtime/src/terminal.mjs'
 New-Item -ItemType Directory -Path $legacyPackage, (Split-Path -Parent $legacySource) -Force | Out-Null
@@ -42,7 +42,9 @@ try {
         }
         Start-Sleep -Milliseconds 250
     } while ([DateTime]::UtcNow -lt $deadline)
-    if (!$baseUrl -or $targets.url -notcontains "$baseUrl/") { throw 'Installed WebView2 page did not start' }
+    if (!$baseUrl -or $targets.url -notcontains "$baseUrl/") {
+        throw "Installed desktop did not publish its WebView2 debug target. Host URL: $baseUrl. Targets: $($targets.url -join ', ')"
+    }
 
     & node (Join-Path $PSScriptRoot 'check-installed-terminal.mjs') $debugPort $baseUrl
     if ($LASTEXITCODE -ne 0) { throw 'Installed WebView2 terminal smoke test failed' }
