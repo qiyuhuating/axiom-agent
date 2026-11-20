@@ -30,17 +30,19 @@ async function health() {
         ". Close active work and stop the existing runtime before switching.",
     );
   }
-  return true;
+  return info;
 }
 let starting;
 export async function ensureRuntime() {
-  if (await health()) return;
+  const current = await health();
+  if (current) return current;
   if (!starting)
     starting = (async () => {
       startDetachedRuntime(root, resolve(config.sessionDir, "runtime.log"));
       for (let i = 0; i < 40; i++) {
         await new Promise((r) => setTimeout(r, 250));
-        if (await health()) return;
+        const current = await health();
+        if (current) return current;
       }
       throw Error("Independent runtime unavailable; inspect runtime.log");
     })().finally(() => {
@@ -49,7 +51,12 @@ export async function ensureRuntime() {
   return starting;
 }
 export async function proxyRuntime(req, res, body) {
-  await ensureRuntime();
+  const health = await ensureRuntime();
+  if (req.method === "GET" && req.url === "/api/runtime-health") {
+    res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+    res.end(JSON.stringify(health));
+    return;
+  }
   const abort = new AbortController();
   const onClose = () => abort.abort();
   res.on("close", onClose);
