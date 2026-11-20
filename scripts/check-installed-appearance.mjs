@@ -94,7 +94,10 @@ try{
  await prompt.press('Backspace');
  await prompt.press('Backspace');
  await prompt.locator('[data-composer-chip]').waitFor({state:'detached'});
- await prompt.fill('Draft retained on reload');
+ // Lexical suppresses synthetic insertText immediately after a handled Backspace.
+ // Real key presses exercise the composer without that automation-only race.
+ await prompt.pressSequentially('Draft retained on reload');
+ assert.equal(await prompt.textContent(),'Draft retained on reload');
  await page.reload();
  await page.waitForFunction(()=>document.querySelector('#prompt')?.textContent==='Draft retained on reload');
  await prompt.fill('');

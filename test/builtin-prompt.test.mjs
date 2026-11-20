@@ -46,6 +46,14 @@ test("prompt migration, edits and reset survive host restarts and session cleanu
        console.log(JSON.stringify(await ${operation}));`],
     { encoding: "utf8", env: { ...process.env, AXIOM_CONFIG: cfg, PI_CODING_AGENT_DIR: profile } }));
   assert.equal(run("builtinPrompt()").text, "Legacy edit");
+  const concurrent = run(`Promise.allSettled([
+    setBuiltinPrompt({ text: "First", expected: "Legacy edit" }),
+    setBuiltinPrompt({ text: "Second", expected: "Legacy edit" })
+  ])`);
+  assert.equal(concurrent[0].status, "fulfilled");
+  assert.equal(concurrent[1].status, "rejected");
+  assert.equal(run("builtinPrompt()").text, "First");
+  assert.equal(run('setBuiltinPrompt({ text: "Legacy edit", expected: "First" })').text, "Legacy edit");
   assert.equal(run('setBuiltinPrompt({ text: "", expected: "Legacy edit" })').text, "");
   await rm(sessions, { recursive: true });
   assert.equal(run("builtinPrompt()").text, "");

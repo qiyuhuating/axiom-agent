@@ -43,7 +43,19 @@ export async function builtinPrompt() {
   };
 }
 
-export async function setBuiltinPrompt({ text, expected, reset = false }) {
+let pendingWrite = Promise.resolve();
+
+export function setBuiltinPrompt(value) {
+  // Keep the comparison and atomic publish in the same serialized operation.
+  const write = pendingWrite.then(() => updateBuiltinPrompt(value));
+  pendingWrite = write.then(
+    () => {},
+    () => {},
+  );
+  return write;
+}
+
+async function updateBuiltinPrompt({ text, expected, reset = false }) {
   if (
     typeof reset !== "boolean" ||
     typeof expected !== "string" ||
