@@ -105,7 +105,7 @@ export function DraftEditor({
           ? old
           : next,
       );
-      if (!tags.has("axiom-external-draft")) setDraft(next.text);
+      if (sessionId && !tags.has("axiom-external-draft")) setDraft(next.text, sessionId);
     });
     const click = editor.registerCommand(
       CLICK_COMMAND,
@@ -134,7 +134,7 @@ export function DraftEditor({
       history();
       unregister();
     };
-  }, [editor]);
+  }, [editor, sessionId]);
   useLayoutEffect(() => {
     const text = editor.getEditorState().read(() => $projectDraft().text);
     if (text === draft) return;

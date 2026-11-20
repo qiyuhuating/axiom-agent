@@ -121,6 +121,9 @@ test("HTTP host: authenticated runtime, restart, extension confirmation and stal
       assert.deepEqual(await get("dialogs"),[]);
     }
     assert.equal((await get("harness")).planMode,false);
+    const stalePrompt = await post("action",{action:"prompt",value:"/axiom-plan on",sessionId:"stale-session"});
+    assert.equal(stalePrompt.status,400);
+    assert.match((await stalePrompt.json()).error,/active session changed/);
     assert.ok((await post("action",{action:"prompt",value:"/axiom-plan on"})).ok);
     assert.equal((await get("harness")).planMode,true);
     const snapshot = await get("snapshot");

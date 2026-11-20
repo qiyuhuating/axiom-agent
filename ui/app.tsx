@@ -110,11 +110,14 @@ function App() {
     l = useLayout();
   const files = useRef<HTMLInputElement>(null),
     transcript = useRef<HTMLElement>(null);
-  const [quote, setQuote] = useState<{ text: string; id: number } | null>(null);
+  const followingTranscript = useRef(true);
+  const [showJump, setShowJump] = useState(false);
+  const sessionId = p.state?.sessionId;
+  const [quote, setQuote] = useState<{ text: string; id: number; sessionId?: string } | null>(null);
   const clearQuote = useCallback(() => setQuote(null), []);
   const selectQuote = useCallback(
-    (text: string) => setQuote({ text: text.slice(0, 16000), id: Date.now() }),
-    [],
+    (text: string) => setQuote({ text: text.slice(0, 16000), id: Date.now(), sessionId }),
+    [sessionId],
   );
   const [queue, setQueue] = useState("steer");
   const [sessionControlsOpen, setSessionControlsOpen] = useState(false);
@@ -151,10 +154,17 @@ function App() {
     window.addEventListener("resize", resized);
     return () => window.removeEventListener("resize", resized);
   }, []);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll after transcript or streaming text changes.
-  useEffect(() => {
-    if (transcript.current) transcript.current.scrollTop = transcript.current.scrollHeight;
-  }, [p.messages, p.stream]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset scroll and pending quote when the session changes.
+  useLayoutEffect(() => {
+    followingTranscript.current = true;
+    setShowJump(false);
+    setQuote(null);
+  }, [sessionId]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: follow committed content only while the reader is near the end.
+  useLayoutEffect(() => {
+    const element = transcript.current;
+    if (element && followingTranscript.current) element.scrollTop = element.scrollHeight;
+  }, [p.messages, p.stream, p.tools, sessionId]);
   const toggleTheme = () => {
     const next = dark ? "light" : "dark";
     localStorage.setItem("axiom.appearance", next);
@@ -287,7 +297,18 @@ function App() {
             </span>
           </div>
         </header>
-        <section id="transcript" ref={transcript} aria-live="polite">
+        <section
+          id="transcript"
+          ref={transcript}
+          aria-live="polite"
+          onScroll={({ currentTarget }) => {
+            const { scrollHeight, scrollTop, clientHeight } = currentTarget;
+            const following = scrollHeight - scrollTop - clientHeight <= 64;
+            if (following === followingTranscript.current) return;
+            followingTranscript.current = following;
+            setShowJump(!following);
+          }}
+        >
           {!p.messages.length && !p.stream && (
             <div className="welcome">
               <h1 className={heroCss.headline}>今天构建什么？</h1>
@@ -308,6 +329,21 @@ function App() {
             </article>
           )}
         </section>
+        {showJump && (
+          <div className="transcript-jump">
+            <button
+              type="button"
+              onClick={() => {
+                followingTranscript.current = true;
+                setShowJump(false);
+                const element = transcript.current;
+                if (element) element.scrollTop = element.scrollHeight;
+              }}
+            >
+              回到最新消息
+            </button>
+          </div>
+        )}
         <div className="composer">
           <HarnessModeDock />
           <PlanDock key={p.state?.sessionId} />
@@ -338,7 +374,7 @@ function App() {
             </div>
             <DraftEditor
               key={p.state?.sessionId}
-              quote={quote}
+              quote={quote?.sessionId === sessionId ? quote : null}
               onQuoteConsumed={clearQuote}
               draft={p.draft}
               disabled={p.syncing || p.changing || !p.connected}
@@ -361,6 +397,7 @@ function App() {
               <button
                 type="button"
                 id="attach-button"
+                disabled={!sessionId || !p.connected || p.changing}
                 aria-label="添加附件"
                 title="添加附件"
                 onClick={() => files.current?.click()}
@@ -414,12 +451,12 @@ function App() {
               </select>
               <select
                 id="queue-mode"
-                aria-label="Message queue"
+                aria-label="运行中的消息队列"
                 value={queue}
                 onChange={(e) => setQueue(e.target.value)}
               >
-                <option value="steer">Steer</option>
-                <option value="followUp">Follow-up</option>
+                <option value="steer">引导当前任务</option>
+                <option value="followUp">当前任务结束后发送</option>
               </select>
               <span className="action-spacer" />
               <button
@@ -441,8 +478,8 @@ function App() {
                 id="send"
                 type="submit"
                 disabled={p.syncing || p.changing || !p.connected}
-                aria-label="发送"
-                title="发送 (Ctrl+Enter)"
+                aria-label={p.busy ? "加入消息队列" : "发送"}
+                title={p.busy ? "加入消息队列 (Ctrl+Enter)" : "发送 (Ctrl+Enter)"}
               >
                 <ArrowUp size={18} />
               </button>

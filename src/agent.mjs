@@ -202,9 +202,14 @@ export class Agent {
       modified,
     }));
   }
-  async prompt(message, images) {
+  #checkPromptSession(sessionId) {
+    if (sessionId !== undefined && sessionId !== this.#sessionId)
+      throw Error("The active session changed. Check the draft before sending.");
+  }
+  async prompt(message, images, sessionId) {
     await this.start();
     if (this.#busy || this.#changing) throw new Error("Agent is running or changing session.");
+    this.#checkPromptSession(sessionId);
     this.#busy = true;
     this.#emit({ type: "run_status", busy: true });
     try {
@@ -220,14 +225,16 @@ export class Agent {
       throw error;
     }
   }
-  async steer(message, images) {
+  async steer(message, images, sessionId) {
     await this.start();
     if (this.#changing) throw new Error("Session change in progress.");
+    this.#checkPromptSession(sessionId);
     return this.#client.steer(message, images);
   }
-  async followUp(message, images) {
+  async followUp(message, images, sessionId) {
     await this.start();
     if (this.#changing) throw Error("Session change in progress");
+    this.#checkPromptSession(sessionId);
     return this.#client.followUp(message, images);
   }
   async clearQueue() {

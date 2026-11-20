@@ -61,6 +61,8 @@ header{display:flex;align-items:center;justify-content:space-between;gap:8px;pad
 .controls button{border:0;padding:6px 8px;color:var(--muted);}
 #status{font-size:12px;color:var(--muted);white-space:nowrap;}
 #transcript{flex:1;min-height:0;overflow-y:auto;overflow-x:clip;padding:16px max(24px,calc((100% - 748px)/2));overscroll-behavior-y:contain;}
+.transcript-jump{position:relative;height:0;z-index:2;}
+.transcript-jump button{position:absolute;bottom:10px;right:max(20px,calc((100% - 748px)/2));padding:4px 12px;background:var(--surface);box-shadow:var(--dsw-elevation-menu);}
 #transcript article{white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 20px;line-height:1.72;}
 #transcript article b{font-size:12px;color:var(--muted);font-weight:500;display:block;margin-bottom:5px;}
 #transcript article.user{width:fit-content;max-width:82%;margin-left:auto;padding:10px 16px;background:var(--dsw-specific-bubble);border-radius:var(--dsw-radius-lg);}

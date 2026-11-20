@@ -45,6 +45,7 @@ type Attachment = {
   path?: string;
   image?: { type: "image"; mimeType: string; data: string };
 };
+type Composer = { draft: string; attachments: Attachment[] };
 export type Job = {
   id: string;
   team?: string;
@@ -134,8 +135,33 @@ export function useProjection() {
 export function useProjectionField<K extends keyof Snapshot>(key: K): Snapshot[K] {
   return useSyncExternalStore(subscribe, () => snapshot[key]);
 }
-export const setDraft = (draft: string) => {
-  if (draft !== snapshot.draft) update({ draft });
+const composers = new Map<string, Composer>();
+const draftKey = (id: string) => "axiom.composer-draft.v1:" + id;
+function composerFor(id: string): Composer {
+  const cached = composers.get(id);
+  if (cached) return cached;
+  let draft = "";
+  try {
+    draft = sessionStorage.getItem(draftKey(id)) ?? "";
+  } catch {
+    // Storage may be disabled; composing still works in this tab.
+  }
+  return { draft, attachments: [] };
+}
+function saveComposer(id: string, composer: Composer) {
+  if (composer.draft || composer.attachments.length) composers.set(id, composer);
+  else composers.delete(id);
+  try {
+    if (composer.draft) sessionStorage.setItem(draftKey(id), composer.draft);
+    else sessionStorage.removeItem(draftKey(id));
+  } catch {
+    // Keep the current draft in memory when persistent storage is unavailable.
+  }
+  if (snapshot.state?.sessionId === id) update(composer);
+}
+export const setDraft = (draft: string, id = snapshot.state?.sessionId) => {
+  if (id && id === snapshot.state?.sessionId && draft !== snapshot.draft)
+    saveComposer(id, { draft, attachments: snapshot.attachments });
 };
 export const appendDraft = (text: string) =>
   setDraft([snapshot.draft, text].filter(Boolean).join("\n"));
@@ -243,6 +269,7 @@ export async function refresh() {
       state,
       harness: harness.sessionId === state.sessionId ? harness : null,
       ...projected,
+      ...(switched ? composerFor(state.sessionId) : {}),
       sessions,
       dialogs,
       stream: "",
@@ -301,14 +328,18 @@ export async function changeSession(kind: string, value?: unknown) {
   if (snapshot.busy || snapshot.changing || snapshot.syncing)
     throw Error("Agent is busy or synchronizing");
   update({ changing: true });
+  let forkDraft: string | undefined;
   try {
     const result = await action(kind, value);
     if (kind === "fork" && !result.cancelled && typeof result.text === "string")
-      setDraft(result.text);
+      forkDraft = result.text;
+    if (kind === "delete" && typeof result.deleted === "string")
+      saveComposer(result.deleted, { draft: "", attachments: [] });
     if (result.cancelled) throw Error("Pi cancelled the session operation");
   } finally {
     try {
       await refresh();
+      if (forkDraft !== undefined) setDraft(forkDraft);
     } finally {
       update({ changing: false });
     }
@@ -428,13 +459,20 @@ function handleEvent(e: any) {
   }
 }
 export function removeAttachment(index: number) {
-  update({ attachments: snapshot.attachments.filter((_, i) => i !== index) });
+  const id = snapshot.state?.sessionId;
+  if (id)
+    saveComposer(id, {
+      draft: snapshot.draft,
+      attachments: snapshot.attachments.filter((_, i) => i !== index),
+    });
 }
 export async function addFiles(files: File[]) {
+  const id = snapshot.state?.sessionId;
+  if (!id) return;
   for (const file of files) {
     try {
       if (file.size > 8 * 1024 * 1024) throw Error("Attachment exceeds 8 MiB");
-      if (snapshot.attachments.length >= 8) throw Error("At most 8 attachments");
+      if (composerFor(id).attachments.length >= 8) throw Error("At most 8 attachments");
       const data = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(String(reader.result).split(",")[1]);
@@ -448,15 +486,19 @@ export async function addFiles(files: File[]) {
         const result = await api("upload", { name: file.name, data });
         attachment = { name: file.name, path: result.path };
       }
-      update({ attachments: [...snapshot.attachments, attachment] });
+      const composer = composerFor(id);
+      if (composer.attachments.length >= 8) throw Error("At most 8 attachments");
+      saveComposer(id, { ...composer, attachments: [...composer.attachments, attachment] });
     } catch (e) {
-      setError(e);
+      if (snapshot.state?.sessionId === id) setError(e);
     }
   }
 }
 let submitting = false;
 export async function submit(mode: string) {
-  if (submitting || snapshot.syncing || snapshot.changing || !snapshot.connected) return;
+  const sessionId = snapshot.state?.sessionId;
+  if (!sessionId || submitting || snapshot.syncing || snapshot.changing || !snapshot.connected)
+    return;
   const { draft, attachments, busy } = snapshot;
   const suffix = attachments
     .filter((a) => a.path)
@@ -467,11 +509,19 @@ export async function submit(mode: string) {
   if (!text && !images.length) return;
   submitting = true;
   try {
-    await action(busy ? mode : "prompt", text || "请分析附加图片。", images);
-    update({
-      draft: snapshot.draft === draft ? "" : snapshot.draft,
-      attachments: snapshot.attachments.filter((a) => !attachments.includes(a)),
+    const result = await api("action", {
+      action: busy ? mode : "prompt",
+      value: text || "请分析附加图片。",
+      sessionId,
+      ...(images.length ? { images } : {}),
     });
+    const current = composerFor(sessionId);
+    saveComposer(sessionId, {
+      draft: current.draft === draft ? "" : current.draft,
+      attachments: current.attachments.filter((a) => !attachments.includes(a)),
+    });
+    if (result === "queued" && snapshot.state?.sessionId === sessionId)
+      update({ notice: mode === "steer" ? "已加入引导队列" : "已加入后续队列" });
   } finally {
     submitting = false;
   }

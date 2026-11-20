@@ -94,12 +94,61 @@ try{
  await prompt.press('Backspace');
  await prompt.press('Backspace');
  await prompt.locator('[data-composer-chip]').waitFor({state:'detached'});
+ await prompt.fill('Draft retained on reload');
+ await page.reload();
+ await page.waitForFunction(()=>document.querySelector('#prompt')?.textContent==='Draft retained on reload');
  await prompt.fill('');
  // Inject a test-only history response, never submit a model prompt or credential.
  const fixtureSnapshot = (patch) => page.route("**/api/snapshot",async route=>{
   const response=await route.fetch();
-  await route.fulfill({response,json:{...await response.json(),...patch()}});
+  const snapshot=await response.json();
+  await route.fulfill({response,json:{...snapshot,...patch(snapshot)}});
  });
+ let draftSession="fixture-draft-a";
+ const draftSessions=[{id:"fixture-draft-a",name:"Draft fixture A"},{id:"fixture-draft-b",name:"Draft fixture B"}];
+ await fixtureSnapshot(snapshot=>({state:{...snapshot.state,sessionId:draftSession},sessions:draftSessions}));
+ await page.route("**/api/action",route=>{
+  const request=route.request().postDataJSON();
+  if(request.action!=="switch")return route.continue();
+  draftSession=request.value;
+  return route.fulfill({json:{cancelled:false}});
+ });
+ await page.reload();
+ await page.locator("#sessions [aria-current=page]").getByText("Draft fixture A").waitFor();
+ await prompt.fill("First draft");
+ await page.locator("#attach-input").setInputFiles({name:"draft-fixture.png",mimeType:"image/png",buffer:Buffer.from("test")});
+ await page.getByRole("button",{name:/draft-fixture.png/}).waitFor();
+ await page.getByRole("button",{name:"Draft fixture B",exact:true}).click();
+ await page.locator("#sessions [aria-current=page]").getByText("Draft fixture B").waitFor();
+ assert.equal(await prompt.textContent(),"");
+ assert.equal(await page.locator("#attachment-list").textContent(),"");
+ await prompt.fill("Second draft");
+ await page.getByRole("button",{name:"Draft fixture A",exact:true}).click();
+ await page.locator("#sessions [aria-current=page]").getByText("Draft fixture A").waitFor();
+ assert.equal(await prompt.textContent(),"First draft");
+ await page.getByRole("button",{name:/draft-fixture.png/}).waitFor();
+ await page.unroute("**/api/action");
+ await page.unroute("**/api/snapshot");
+ await page.addInitScript(()=>{
+  window.EventSource=class extends window.EventSource{
+   constructor(url,options){super(url,options);window.axiomTestEvents=this;}
+  };
+ });
+ await fixtureSnapshot(()=>({messages:Array.from({length:30},(_,index)=>({role:"assistant",content:"Fixture history "+index+"\n"+"Line of history\n".repeat(5)}))}));
+ await page.reload();
+ await page.getByText('Fixture history 29',{exact:false}).waitFor();
+ await page.locator('#transcript').evaluate(element=>{element.scrollTop=0;});
+ const jump=page.getByRole('button',{name:'回到最新消息'});
+ await jump.waitFor();
+ await page.evaluate(()=>window.axiomTestEvents.dispatchEvent(new MessageEvent("message",{data:JSON.stringify({
+  type:"message_update",assistantMessageEvent:{type:"text_delta",delta:"Streaming while reading"}
+ })})));
+ await page.getByText("Streaming while reading",{exact:true}).waitFor({state:"attached"});
+ assert.equal(await page.locator('#transcript').evaluate(element=>element.scrollTop),0);
+ await jump.click();
+ await jump.waitFor({state:'detached'});
+ assert.ok(await page.locator('#transcript').evaluate(element=>element.scrollHeight-element.scrollTop-element.clientHeight<2));
+ await page.unroute("**/api/snapshot");
  await fixtureSnapshot(()=>({messages:[{role:"assistant",content:[{type:"text",text:"Fixture quote to reference"}]},{role:"user",content:[{type:"text",text:"fixture ghp_"+"A".repeat(36)}]},{role:"toolResult",toolCallId:"delivery-fixture",toolName:"present_files",content:[{type:"text",text:"Presented to user: axiom-fixture.txt"}],details:{kind:"axiom-deliverables-v1",files:[{path:"axiom-fixture.txt",size:20}]}}]}));
  await page.reload();
  const reply=page.locator("#transcript article.assistant").first();

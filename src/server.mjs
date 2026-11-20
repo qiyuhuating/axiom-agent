@@ -194,7 +194,7 @@ const server = createServer(async (req, res) => {
     if (req.method === "POST" && path === "/api/action") {
       if (req.headers.origin !== "http://" + host || req.headers["x-axiom-client"] !== "1")
         return json(res, { error: "Invalid origin" }, 403);
-      const { action, value, images } = await body(req);
+      const { action, value, images, sessionId } = await body(req);
       if (action === "prompt" || action === "steer" || action === "followUp") {
         if (typeof value !== "string" || !value.trim())
           return json(res, { error: "Empty input" }, 400);
@@ -211,7 +211,7 @@ const server = createServer(async (req, res) => {
             ))
         )
           throw Error("Invalid image attachments");
-        return json(res, await agent[action](value, images));
+        return json(res, await agent[action](value, images, sessionId));
       }
       if (action === "clear-queue") return json(res, await agent.clearQueue());
       if (action === "abort-retry") {
