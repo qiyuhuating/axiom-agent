@@ -77,6 +77,7 @@ type Snapshot = {
   state: State | null;
   messages: Message[];
   tools: Tool[];
+  turn: number;
   stream: string;
   models: Model[];
   levels: string[];
@@ -97,6 +98,7 @@ let snapshot: Snapshot = {
   state: null,
   messages: [],
   tools: [],
+  turn: 0,
   stream: "",
   models: [],
   levels: [],
@@ -151,9 +153,8 @@ export function textOf(content: any): string {
         .map((x: any) => x.text)
         .join("\n");
 }
-function upsertTool(tools: Tool[], e: Partial<Tool> & { id: string }): Tool[] {
-  const old = tools.find((t) => t.id === e.id);
-  const next = {
+function mergeTool(e: Partial<Tool> & { id: string }, old?: Tool): Tool {
+  return {
     id: e.id,
     name: e.name ?? old?.name ?? "tool",
     args: e.args ?? old?.args,
@@ -163,30 +164,48 @@ function upsertTool(tools: Tool[], e: Partial<Tool> & { id: string }): Tool[] {
     started: e.started ?? old?.started,
     ended: e.ended ?? old?.ended,
     details: e.details ?? old?.details,
-    turn: e.turn ?? old?.turn,
+    turn: old?.turn ?? e.turn,
   };
+}
+function upsertTool(tools: Tool[], e: Partial<Tool> & { id: string }): Tool[] {
+  const old = tools.find((t) => t.id === e.id);
+  const next = mergeTool(e, old);
   return old ? tools.map((t) => (t.id === e.id ? next : t)) : [...tools, next];
 }
 export function projectHistory(messages: Message[]) {
-  let tools: Tool[] = [],
-    turn = 0;
+  const tools = new Map<string, Tool>();
+  let turn = 0;
   for (const m of messages) {
     if (m.role === "user") turn++;
     if (Array.isArray(m.content))
       for (const c of m.content)
         if (c.type === "toolCall")
-          tools = upsertTool(tools, { id: c.id, name: c.name, args: c.arguments, turn });
-    if (m.role === "toolResult" && m.toolCallId)
-      tools = upsertTool(tools, {
-        id: m.toolCallId,
-        name: m.toolName,
-        result: m.content,
-        details: m.details,
-        failed: !!m.isError,
-        finished: true,
-      });
+          tools.set(
+            c.id,
+            mergeTool({ id: c.id, name: c.name, args: c.arguments, turn }, tools.get(c.id)),
+          );
+    if (m.role === "toolResult" && m.toolCallId) {
+      tools.set(
+        m.toolCallId,
+        mergeTool(
+          {
+            id: m.toolCallId,
+            name: m.toolName,
+            result: m.content,
+            details: m.details,
+            failed: !!m.isError,
+            finished: true,
+          },
+          tools.get(m.toolCallId),
+        ),
+      );
+    }
   }
-  return { messages: messages.filter((m) => ["user", "assistant"].includes(m.role)), tools };
+  return {
+    messages: messages.filter((m) => ["user", "assistant"].includes(m.role)),
+    tools: Array.from(tools.values()),
+    turn,
+  };
 }
 let generation = 0;
 let pendingEvents: any[] | null = null;
@@ -214,8 +233,9 @@ export async function refresh() {
     pendingEvents = null;
     const projected = projectHistory(messages);
     if (!switched) {
+      const previousTools = new Map(snapshot.tools.map((tool) => [tool.id, tool]));
       projected.tools = projected.tools.map((t) => {
-        const old = snapshot.tools.find((v) => v.id === t.id);
+        const old = previousTools.get(t.id);
         return old ? { ...t, started: old.started, ended: old.ended } : t;
       });
     }
@@ -267,8 +287,7 @@ export function loadJobs() {
 }
 export async function loadOptions() {
   const [models, levels, state] = await Promise.all([api("models"), api("levels"), api("state")]);
-  if (snapshot.state?.sessionId === state.sessionId)
-    update({ models, levels, state, busy: state.busy });
+  if (snapshot.state?.sessionId === state.sessionId) update({ models, levels, state });
 }
 export async function changeSession(kind: string, value?: unknown) {
   if (snapshot.busy || snapshot.changing || snapshot.syncing)
@@ -328,6 +347,7 @@ function handleEvent(e: any) {
       if (["user", "assistant"].includes(e.message.role))
         update({
           messages: [...snapshot.messages, e.message],
+          turn: snapshot.turn + (e.message.role === "user" ? 1 : 0),
           stream: e.message.role === "assistant" ? "" : snapshot.stream,
           ...(e.message.errorMessage ? { error: e.message.errorMessage } : {}),
         });
@@ -384,6 +404,7 @@ function handleEvent(e: any) {
             details: e.result?.details,
             failed: !!e.isError,
             finished: e.type === "tool_execution_end",
+            turn: snapshot.turn,
             ...(e.type === "tool_execution_start" ? { started: Date.now() } : {}),
             ...(e.type === "tool_execution_end" ? { ended: Date.now() } : {}),
           }),
