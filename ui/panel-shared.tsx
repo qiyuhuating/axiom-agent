@@ -3,7 +3,7 @@ export async function api(path: string, data?: unknown) {
   const r = await fetch(
     "/api/" + path,
     data === undefined
-      ? {}
+      ? { signal: AbortSignal.timeout(30000) }
       : {
           method: "POST",
           headers: {
@@ -13,8 +13,17 @@ export async function api(path: string, data?: unknown) {
           body: JSON.stringify(data),
         },
   );
-  const value = await r.json();
-  if (!r.ok) throw Error(value.error || r.statusText);
+  // Gateway failures are allowed to be plain text; do not hide their HTTP status behind a JSON parse error.
+  const text = await r.text();
+  let value: ReturnType<typeof JSON.parse>;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    throw Error(
+      "API " + path + ": " + r.status + " " + (r.statusText || "Invalid server response"),
+    );
+  }
+  if (!r.ok) throw Error(value?.error || "API " + path + ": " + r.status + " " + r.statusText);
   return value;
 }
 export const terminalAction = (action: string, value?: unknown) =>

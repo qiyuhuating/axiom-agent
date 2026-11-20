@@ -14,6 +14,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 
 import { createRoot } from "react-dom/client";
 import heroCss from "../vendor/dsh/conversation/HeroShell.module.css";
 import inputCss from "../vendor/dsh/conversation/InputBar.module.css";
+import { StateDot } from "../vendor/dsh/primitives/StateDot.tsx";
 import { UserMessageBubble } from "../vendor/dsh/primitives/UserMessageBubble.tsx";
 import settingsCss from "../vendor/dsh/sidebar/SettingsRoot.module.css";
 import sidebarCss from "../vendor/dsh/sidebar/SidebarRoot.module.css";
@@ -49,6 +50,12 @@ const markdown = new MarkdownIt({ html: false, linkify: true }).disable("image")
 const MemoWorkbench = memo(Workbench);
 const MemoSidebarPanels = memo(SidebarPanels);
 const MemoSessionList = memo(SessionList);
+const MemoDraftEditor = memo(DraftEditor);
+const MemoObservedChanges = memo(ObservedChanges);
+const MemoDeliverableCards = memo(DeliverableCards);
+const MemoTraceLedger = memo(TraceLedger);
+const MemoHarnessModeDock = memo(HarnessModeDock);
+const MemoPlanDock = memo(PlanDock);
 const MarkdownMessage = memo(function MarkdownMessage({ text }: { text: string }) {
   return (
     // biome-ignore lint/security/noDangerouslySetInnerHtml: raw HTML and unsafe links are disabled by markdown-it.
@@ -120,12 +127,19 @@ function App() {
     [sessionId],
   );
   const [queue, setQueue] = useState("steer");
+  const submitDraft = useCallback(() => void run(() => submit(queue)), [queue]);
+  const switchSession = useCallback(async (id: string) => {
+    layoutActions.closeDrawer();
+    await run(() => changeSession("switch", id));
+  }, []);
+  const deleteSession = useCallback((id: string) => changeSession("delete", id), []);
   const [sessionControlsOpen, setSessionControlsOpen] = useState(false);
   const [mode, setMode] = useState(() => localStorage.getItem("axiom.appearance") || "system");
   const [systemDark, setSystemDark] = useState(
     () => matchMedia("(prefers-color-scheme: dark)").matches,
   );
-  const locked = p.busy || p.syncing || p.changing;
+  const unavailable = !p.connected || p.syncing || p.syncFailed || p.changing || !sessionId;
+  const locked = p.busy || unavailable;
   useEffect(connect, []);
   useEffect(() => {
     const media = matchMedia("(prefers-color-scheme: dark)"),
@@ -218,11 +232,8 @@ function App() {
             sessions={p.sessions}
             current={p.state?.sessionId ?? null}
             disabled={locked}
-            onSelect={async (id) => {
-              layoutActions.closeDrawer();
-              await run(() => changeSession("switch", id));
-            }}
-            onDelete={(id) => changeSession("delete", id)}
+            onSelect={switchSession}
+            onDelete={deleteSession}
           />
         </nav>
         <footer>
@@ -279,22 +290,58 @@ function App() {
               id="session-actions"
               type="button"
               aria-label="Pi 会话"
-              disabled={!p.state || !p.connected || p.syncing || p.changing}
+              disabled={unavailable}
               onClick={() => setSessionControlsOpen(true)}
             >
               Pi
             </button>
             <span id="status" role="status">
+              <StateDot
+                state={
+                  !p.connected
+                    ? p.state
+                      ? "error"
+                      : "ongoing"
+                    : p.syncing
+                      ? "ongoing"
+                      : p.syncFailed
+                        ? "warning"
+                        : p.dialogs.length
+                          ? "warning"
+                          : p.busy
+                            ? "ongoing"
+                            : "idle"
+                }
+              />
               {!p.connected
                 ? p.state
                   ? "连接中断"
                   : "连接中"
-                : p.busy
-                  ? "运行中"
-                  : p.syncing
-                    ? "同步中"
-                    : "就绪"}
+                : p.syncing
+                  ? "同步中"
+                  : p.syncFailed
+                    ? "同步失败"
+                    : p.dialogs.length
+                      ? "等待输入"
+                      : p.retrying
+                        ? "正在重试"
+                        : p.busy
+                          ? "运行中"
+                          : "就绪"}
             </span>
+            {p.connected && p.syncFailed && (
+              <button
+                type="button"
+                onClick={() =>
+                  void run(async () => {
+                    await refresh();
+                    await loadOptions();
+                  })
+                }
+              >
+                重新同步
+              </button>
+            )}
           </div>
         </header>
         <section
@@ -321,8 +368,8 @@ function App() {
             locked={locked}
             onQuote={selectQuote}
           />
-          <ObservedChanges tools={p.tools} />
-          <DeliverableCards tools={p.tools} />
+          <MemoObservedChanges tools={p.tools} />
+          <MemoDeliverableCards tools={p.tools} />
           {p.stream && (
             <article className="assistant">
               <div>{p.stream}</div>
@@ -345,8 +392,8 @@ function App() {
           </div>
         )}
         <div className="composer">
-          <HarnessModeDock />
-          <PlanDock key={p.state?.sessionId} />
+          <MemoHarnessModeDock />
+          <MemoPlanDock key={p.state?.sessionId} />
           <div id="error" role="alert">
             {p.error}
           </div>
@@ -372,14 +419,14 @@ function App() {
                 </button>
               ))}
             </div>
-            <DraftEditor
+            <MemoDraftEditor
               key={p.state?.sessionId}
               quote={quote?.sessionId === sessionId ? quote : null}
               onQuoteConsumed={clearQuote}
               draft={p.draft}
-              disabled={p.syncing || p.changing || !p.connected}
+              disabled={unavailable}
               sessionId={p.state?.sessionId}
-              onSubmit={() => void run(() => submit(queue))}
+              onSubmit={submitDraft}
             />
             <div className="actions">
               <input
@@ -397,7 +444,7 @@ function App() {
               <button
                 type="button"
                 id="attach-button"
-                disabled={!sessionId || !p.connected || p.changing}
+                disabled={unavailable}
                 aria-label="添加附件"
                 title="添加附件"
                 onClick={() => files.current?.click()}
@@ -462,7 +509,7 @@ function App() {
               <button
                 type="button"
                 id="stop"
-                disabled={!p.busy}
+                disabled={!p.busy || !p.connected}
                 aria-label="停止"
                 title="停止"
                 onClick={() =>
@@ -477,7 +524,7 @@ function App() {
               <button
                 id="send"
                 type="submit"
-                disabled={p.syncing || p.changing || !p.connected}
+                disabled={unavailable}
                 aria-label={p.busy ? "加入消息队列" : "发送"}
                 title={p.busy ? "加入消息队列 (Ctrl+Enter)" : "发送 (Ctrl+Enter)"}
               >
@@ -498,7 +545,7 @@ function App() {
             执行轨迹
           </h2>
           <div id="trace">
-            <TraceLedger tools={p.tools} busy={p.busy} />
+            <MemoTraceLedger tools={p.tools} busy={p.busy} />
           </div>
         </div>
       </aside>

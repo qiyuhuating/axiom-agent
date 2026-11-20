@@ -88,6 +88,7 @@ type Snapshot = {
   draft: string;
   attachments: Attachment[];
   syncing: boolean;
+  syncFailed: boolean;
   changing: boolean;
   busy: boolean;
   retrying: boolean;
@@ -110,6 +111,7 @@ let snapshot: Snapshot = {
   draft: "",
   attachments: [],
   syncing: true,
+  syncFailed: false,
   changing: false,
   busy: false,
   retrying: false,
@@ -176,7 +178,14 @@ export async function run(fn: () => Promise<unknown>) {
   }
 }
 export const action = (action: string, value?: unknown, images?: unknown[]) =>
-  api("action", { action, value, ...(images?.length ? { images } : {}) });
+  api("action", {
+    action,
+    value,
+    ...(["prompt", "steer", "followUp"].includes(action)
+      ? { sessionId: snapshot.state?.sessionId }
+      : {}),
+    ...(images?.length ? { images } : {}),
+  });
 export function textOf(content: any): string {
   return typeof content === "string"
     ? content
@@ -249,11 +258,15 @@ export async function refresh() {
     const { state, messages, sessions, dialogs, harness } = await api("snapshot");
     if (id !== generation) return;
     const switched = snapshot.state?.sessionId !== state.sessionId;
-    const live = new Set(dialogs.map((d: Dialog) => "axiom.question-draft.v1:" + d.id));
-    for (let i = sessionStorage.length - 1; i >= 0; i--) {
-      const key = sessionStorage.key(i);
-      if (key?.startsWith("axiom.question-draft.v1:") && !live.has(key))
-        sessionStorage.removeItem(key);
+    try {
+      const live = new Set(dialogs.map((d: Dialog) => "axiom.question-draft.v1:" + d.id));
+      for (let i = sessionStorage.length - 1; i >= 0; i--) {
+        const key = sessionStorage.key(i);
+        if (key?.startsWith("axiom.question-draft.v1:") && !live.has(key))
+          sessionStorage.removeItem(key);
+      }
+    } catch {
+      /* Storage is optional; never block the authoritative snapshot. */
     }
     const buffered = pendingEvents;
     pendingEvents = null;
@@ -276,6 +289,7 @@ export async function refresh() {
       busy: state.busy,
       retrying: state.retrying === true,
       syncing: false,
+      syncFailed: false,
     });
     // Live events during an unversioned snapshot cannot safely be replayed:
     // completed messages/dialogs may already be present. Refresh on settlement.
@@ -300,6 +314,7 @@ export async function refresh() {
       queueMicrotask(() => void run(refresh));
       return;
     }
+    update({ syncFailed: true });
     throw error;
   } finally {
     if (id === generation) {
@@ -325,7 +340,13 @@ export async function loadOptions() {
   if (snapshot.state?.sessionId === state.sessionId) update({ models, levels, state });
 }
 export async function changeSession(kind: string, value?: unknown) {
-  if (snapshot.busy || snapshot.changing || snapshot.syncing)
+  if (
+    !snapshot.connected ||
+    snapshot.syncFailed ||
+    snapshot.busy ||
+    snapshot.changing ||
+    snapshot.syncing
+  )
     throw Error("Agent is busy or synchronizing");
   update({ changing: true });
   let forkDraft: string | undefined;
@@ -347,7 +368,11 @@ export async function changeSession(kind: string, value?: unknown) {
   await loadOptions();
 }
 export function removeDialog(id: string) {
-  sessionStorage.removeItem("axiom.question-draft.v1:" + id);
+  try {
+    sessionStorage.removeItem("axiom.question-draft.v1:" + id);
+  } catch {
+    /* optional storage */
+  }
   update({ dialogs: snapshot.dialogs.filter((d) => d.id !== id) });
 }
 let recovering = false;
@@ -497,7 +522,14 @@ export async function addFiles(files: File[]) {
 let submitting = false;
 export async function submit(mode: string) {
   const sessionId = snapshot.state?.sessionId;
-  if (!sessionId || submitting || snapshot.syncing || snapshot.changing || !snapshot.connected)
+  if (
+    !sessionId ||
+    submitting ||
+    snapshot.syncing ||
+    snapshot.syncFailed ||
+    snapshot.changing ||
+    !snapshot.connected
+  )
     return;
   const { draft, attachments, busy } = snapshot;
   const suffix = attachments

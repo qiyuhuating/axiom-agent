@@ -21,7 +21,7 @@ import {
   run,
   setError,
   type Tool,
-  useProjection,
+  useProjectionField,
 } from "./projection.ts";
 import { openDelivery, openPanel } from "./workbench.tsx";
 
@@ -36,7 +36,13 @@ const t = (key: string, params?: Record<string, number>) =>
     "todo.progress.pending": `待处理 ${params?.pending}`,
   })[key] ?? key;
 export function HarnessModeDock() {
-  const { harness, busy, syncing } = useProjection();
+  const harness = useProjectionField("harness"),
+    busy = useProjectionField("busy"),
+    syncing = useProjectionField("syncing"),
+    syncFailed = useProjectionField("syncFailed"),
+    connected = useProjectionField("connected"),
+    changing = useProjectionField("changing");
+  const disabled = busy || syncing || syncFailed || !connected || changing;
   if (!harness) return null;
   const g = harness.goal;
   const command = (value: string) =>
@@ -50,7 +56,7 @@ export function HarnessModeDock() {
         <Button
           size="sm"
           variant="outline"
-          disabled={busy || syncing}
+          disabled={disabled}
           onClick={() => command(harness.planMode ? "/axiom-plan off" : "/axiom-plan on")}
         >
           {harness.planMode ? "退出计划模式" : "计划模式"}
@@ -58,7 +64,7 @@ export function HarnessModeDock() {
         {g?.phase === "paused" && g.remaining > 0 && (
           <Button
             size="sm"
-            disabled={busy || syncing}
+            disabled={disabled}
             onClick={() => {
               if (window.confirm("重新授权剩余 " + g.remaining + " 轮目标推进？"))
                 command("/axiom-goal resume");
@@ -82,7 +88,7 @@ export function HarnessModeDock() {
             </span>
             <Button
               size="sm"
-              disabled={busy || syncing || g.phase !== "armed"}
+              disabled={disabled || g.phase !== "armed"}
               onClick={() => command("/axiom-goal pause")}
             >
               暂停
@@ -91,7 +97,7 @@ export function HarnessModeDock() {
         )}
         <Button
           size="sm"
-          disabled={busy || syncing}
+          disabled={disabled}
           onClick={() => {
             const objective = window.prompt("目标（仅在下一次主动发送任务后自动推进）");
             if (!objective?.trim()) return;
@@ -111,7 +117,8 @@ export function HarnessModeDock() {
   );
 }
 export function PlanDock() {
-  const { state, jobs } = useProjection();
+  const state = useProjectionField("state"),
+    jobs = useProjectionField("jobs");
   const [review, setReview] = useState(false);
   const plan = state ? jobs?.plans[state.sessionId] : undefined;
   useEffect(() => {

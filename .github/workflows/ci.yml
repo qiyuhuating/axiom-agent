@@ -20,6 +20,8 @@ jobs:
       - run: npm test
       - name: Build Windows x64 NSIS installer
         run: npm run desktop:build
+      - name: Desktop startup log regression
+        run: cargo test --release --locked --manifest-path src-tauri/Cargo.toml --bin axiom-desktop concurrent_log_records_preserve_stdout_readiness
       - run: node scripts/check-desktop-runtime.mjs
       - name: Native terminal migration parity
         shell: pwsh

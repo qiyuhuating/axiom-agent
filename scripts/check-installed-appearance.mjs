@@ -187,6 +187,15 @@ try{
  assert.equal(await page.evaluate(()=>sessionStorage.getItem("axiom.question-draft.v1:fixture-question-draft")),null);
  await page.unroute("**/api/snapshot");await page.unroute("**/api/ui-response");
  await page.reload();
+ // A failed authoritative snapshot must never expose a false-ready composer.
+ await page.route("**/api/snapshot",route=>route.fulfill({status:503,contentType:"text/plain",body:"Unavailable"}));
+ await page.reload();
+ await page.getByText("同步失败",{exact:true}).waitFor();
+ assert.equal(await page.locator("#send").isDisabled(),true);
+ await page.unroute("**/api/snapshot");
+ await page.getByRole("button",{name:"重新同步"}).click();
+ await page.waitForFunction(()=>document.querySelector("#status")?.textContent==="就绪");
+ assert.equal(await page.locator("#send").isDisabled(),false);
  await capture(page,'composer-features.png');
  assert.deepEqual(errors,[]);console.log("HARNESS_UI_RENDER_PASS",JSON.stringify(a));
 }finally{await browser.close();}

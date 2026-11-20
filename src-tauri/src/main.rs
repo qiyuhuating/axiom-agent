@@ -3,9 +3,9 @@
 use std::os::windows::process::CommandExt;
 use std::{
     fs::{self, OpenOptions},
-    io::{BufRead, BufReader},
+    io::{BufRead, BufReader, Read, Write},
     process::{Child, Command, Stdio},
-    sync::{mpsc, Mutex},
+    sync::{mpsc, Arc, Mutex},
     thread,
     time::{Duration, Instant},
 };
@@ -25,6 +25,44 @@ fn stop_host(child: &mut Child) {
     }
     let _ = child.kill();
     let _ = child.wait();
+}
+
+// Serialize stderr and stdout records; inherited file handles can interleave
+// writes from different processes (including the readiness record).
+fn drain_host_output(
+    input: impl Read,
+    log: Arc<Mutex<impl Write>>,
+    ready: Option<mpsc::Sender<u16>>,
+) {
+    let mut reader = BufReader::new(input);
+    let mut line = Vec::new();
+    let mut ready = ready;
+    loop {
+        line.clear();
+        match reader.read_until(b'\n', &mut line) {
+            Ok(0) | Err(_) => break,
+            Ok(_) => {}
+        }
+        if !line.ends_with(b"\n") {
+            line.push(b'\n');
+        }
+        if let Ok(mut log) = log.lock() {
+            let _ = log.write_all(&line);
+        }
+        if let Some(port) = std::str::from_utf8(&line)
+            .ok()
+            .and_then(|line| {
+                line.trim_end_matches(['\r', '\n'])
+                    .strip_prefix("AXIOM_READY ")
+            })
+            .and_then(|port| port.parse::<u16>().ok())
+            .filter(|port| *port != 0)
+        {
+            if let Some(tx) = ready.take() {
+                let _ = tx.send(port);
+            }
+        }
+    }
 }
 
 fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
@@ -89,25 +127,16 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .env("PATH", path)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::from(log.try_clone()?))
+        .stderr(Stdio::piped())
         .creation_flags(0x08000000)
         .spawn()?;
     let stdout = child.stdout.take().expect("piped stdout");
+    let stderr = child.stderr.take().expect("piped stderr");
+    let log = Arc::new(Mutex::new(log));
+    let stderr_log = Arc::clone(&log);
     let (tx, rx) = mpsc::channel();
-    thread::spawn(move || {
-        use std::io::Write;
-        let mut log = log;
-        for line in BufReader::new(stdout).lines() {
-            let Ok(line) = line else { break };
-            let _ = writeln!(log, "{line}");
-            if let Some(port) = line
-                .strip_prefix("AXIOM_READY ")
-                .and_then(|p| p.parse::<u16>().ok())
-            {
-                let _ = tx.send(port);
-            }
-        }
-    });
+    thread::spawn(move || drain_host_output(stderr, stderr_log, None));
+    thread::spawn(move || drain_host_output(stdout, log, Some(tx)));
     let port = match rx.recv_timeout(Duration::from_secs(20)) {
         Ok(port) if port != 0 => port,
         _ => {
@@ -151,4 +180,31 @@ fn main() {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn concurrent_log_records_preserve_stdout_readiness() {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let stderr_log = Arc::clone(&log);
+        let (tx, rx) = mpsc::channel();
+        let stderr = thread::spawn(move || {
+            drain_host_output(&b"AXIOM_READY 1\nprivate host log\n"[..], stderr_log, None);
+        });
+        drain_host_output(
+            &b"\xff\nAXIOM_READY 4567\nAXIOM_READY 2"[..],
+            Arc::clone(&log),
+            Some(tx),
+        );
+        stderr.join().unwrap();
+        assert_eq!(rx.try_iter().collect::<Vec<_>>(), vec![4567]);
+        let log = log.lock().unwrap();
+        assert_eq!(log.split(|b| *b == b'\n').count(), 6);
+        assert!(log
+            .split(|b| *b == b'\n')
+            .any(|line| line == b"AXIOM_READY 4567"));
+    }
 }
