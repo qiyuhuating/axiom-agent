@@ -177,6 +177,11 @@ try{
  await page.unroute("**/api/snapshot");
  await fixtureSnapshot(()=>({messages:[{role:"assistant",content:[{type:"text",text:"Fixture quote to reference"}]},{role:"user",content:[{type:"text",text:"fixture ghp_"+"A".repeat(36)}]},{role:"toolResult",toolCallId:"delivery-fixture",toolName:"present_files",content:[{type:"text",text:"Presented to user: axiom-fixture.txt"}],details:{kind:"axiom-deliverables-v1",files:[{path:"axiom-fixture.txt",size:20}]}}]}));
  await page.reload();
+ await page.locator("#transcript .axiom-message.user").waitFor();
+ assert.equal(await page.locator("#transcript .axiom-message.user").evaluate(e=>getComputedStyle(e).backgroundColor),"rgba(0, 0, 0, 0)");
+ await page.locator("#transcript .axiom-message.user").getByRole("button",{name:"复制消息"}).waitFor();
+ assert.equal(await page.locator('nav[aria-label="会话视图"]').count(),0);
+ await capture(page,"conversation.png");
  const reply=page.locator("#transcript article.assistant").first();
  await reply.hover();
  await reply.getByRole("button",{name:"引用",exact:true}).click();

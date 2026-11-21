@@ -1,7 +1,11 @@
 import {
   ArrowUp,
   ChevronDown,
+  ChevronRight,
+  Copy,
+  Ellipsis,
   FolderOpen,
+  MessageSquareQuote,
   PanelLeft,
   PanelRight,
   Paperclip,
@@ -13,10 +17,16 @@ import {
 import MarkdownIt from "markdown-it";
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import assistantCss from "../vendor/dsh/chat/AssistantMarkdown.module.css";
+import chatCss from "../vendor/dsh/chat/ChatView.module.css";
+import commandCss from "../vendor/dsh/chat/GenericCommandCard.module.css";
+import actionsCss from "../vendor/dsh/chat/MessageIconActions.module.css";
+import messageCss from "../vendor/dsh/chat/MessageItem.module.css";
 import conversationCss from "../vendor/dsh/conversation/ConversationRoot.module.css";
 import heroCss from "../vendor/dsh/conversation/HeroShell.module.css";
 import inputCss from "../vendor/dsh/conversation/InputBar.module.css";
 import frameCss from "../vendor/dsh/layout/AppFrame.module.css";
+import { writeClipboard } from "../vendor/dsh/primitives/clipboard.ts";
 import { FishLogo } from "../vendor/dsh/primitives/FishLogo.tsx";
 import { StateDot } from "../vendor/dsh/primitives/StateDot.tsx";
 import { UserMessageBubble } from "../vendor/dsh/primitives/UserMessageBubble.tsx";
@@ -78,38 +88,65 @@ const TranscriptMessages = memo(function TranscriptMessages({
 }) {
   return messages.map((message, index) => {
     const text = textOf(message.content) || message.errorMessage || "";
-    if (!text) return null;
+    if (!text || (message.role !== "user" && message.role !== "assistant")) return null;
+    const user = message.role === "user";
+    const copy = (
+      <button
+        type="button"
+        className={actionsCss.action}
+        title="复制消息"
+        aria-label="复制消息"
+        onClick={() => void writeClipboard(text)}
+      >
+        <Copy aria-hidden="true" size={15} />
+      </button>
+    );
     return (
-      <article key={(sessionId ?? "") + ":" + index} className={message.role}>
-        <b>{message.role === "user" ? "你" : "Axiom"}</b>
-        {message.role === "assistant" ? (
-          <>
-            <MarkdownMessage text={text} />
-            <button
-              type="button"
-              className="quote-message"
-              title="引用此回复"
-              disabled={locked}
-              onClick={(event) => {
-                const selection = window.getSelection();
-                const article = event.currentTarget.closest("article");
-                const selected = selection?.toString().trim();
-                const within =
-                  selection?.anchorNode &&
-                  selection.focusNode &&
-                  article?.contains(selection.anchorNode) &&
-                  article.contains(selection.focusNode);
-                onQuote(within && selected ? selected : text);
-                selection?.removeAllRanges();
-              }}
-            >
-              引用
-            </button>
-          </>
+      <article
+        key={(sessionId ?? "") + ":" + index}
+        className={"axiom-message " + message.role}
+        data-chat-flow-kind={user ? "user" : "assistant"}
+        data-actions-reveal="hover"
+      >
+        {user ? (
+          <div className={messageCss.userRow}>
+            <div className={messageCss.userStack}>
+              <UserMessageBubble>
+                <UserText text={text} />
+              </UserMessageBubble>
+              <div className={actionsCss.actions}>{copy}</div>
+            </div>
+          </div>
         ) : (
-          <UserMessageBubble>
-            <UserText text={text} />
-          </UserMessageBubble>
+          <div className={assistantCss.root}>
+            <div className={assistantCss.body}>
+              <MarkdownMessage text={text} />
+            </div>
+            <div className={actionsCss.actions + " " + assistantCss.actions}>
+              {copy}
+              <button
+                type="button"
+                className={"quote-message " + actionsCss.action}
+                title="引用此回复"
+                aria-label="引用"
+                disabled={locked}
+                onClick={(event) => {
+                  const selection = window.getSelection();
+                  const article = event.currentTarget.closest("article");
+                  const selected = selection?.toString().trim();
+                  const within =
+                    selection?.anchorNode &&
+                    selection.focusNode &&
+                    article?.contains(selection.anchorNode) &&
+                    article.contains(selection.focusNode);
+                  onQuote(within && selected ? selected : text);
+                  selection?.removeAllRanges();
+                }}
+              >
+                <MessageSquareQuote aria-hidden="true" size={15} />
+              </button>
+            </div>
+          </div>
         )}
       </article>
     );
@@ -326,7 +363,7 @@ function App() {
                     disabled={unavailable}
                     onClick={() => setSessionControlsOpen(true)}
                   >
-                    Pi
+                    <Ellipsis size={16} />
                   </button>
                   <span id="status" role="status">
                     <StateDot
@@ -378,22 +415,6 @@ function App() {
                 </div>
               </div>
             </div>
-            {!empty && (
-              <nav className={conversationCss.tabs} aria-label="会话视图">
-                <button type="button" className="axiom-tab-active" aria-current="page">
-                  对话
-                </button>
-                <button type="button" onClick={() => openPanel("files")}>
-                  文件
-                </button>
-                <button type="button" onClick={() => openPanel("jobs")}>
-                  任务
-                </button>
-                <button type="button" onClick={() => openPanel("terminal")}>
-                  终端
-                </button>
-              </nav>
-            )}
           </header>
           <div
             className={conversationCss.body + " axiom-conversation-body"}
@@ -417,19 +438,29 @@ function App() {
                   <span>今天构建什么？</span>
                 </div>
               )}
-              <TranscriptMessages
-                messages={p.messages}
-                sessionId={p.state?.sessionId}
-                locked={locked}
-                onQuote={selectQuote}
-              />
-              <MemoObservedChanges tools={p.tools} />
-              <MemoDeliverableCards tools={p.tools} />
-              {p.stream && (
-                <article className="assistant">
-                  <div>{p.stream}</div>
-                </article>
-              )}
+              <div className="axiom-chat-column">
+                <TranscriptMessages
+                  messages={p.messages}
+                  sessionId={p.state?.sessionId}
+                  locked={locked}
+                  onQuote={selectQuote}
+                />
+                <MemoObservedChanges tools={p.tools} />
+                <MemoDeliverableCards tools={p.tools} />
+                {p.stream && (
+                  <article
+                    className="axiom-message assistant"
+                    data-chat-flow-kind="assistant"
+                    aria-label="正在生成"
+                  >
+                    <div className={assistantCss.root}>
+                      <div className={assistantCss.body}>
+                        <MarkdownMessage text={p.stream} />
+                      </div>
+                    </div>
+                  </article>
+                )}
+              </div>
             </section>
             {showJump && (
               <div className="transcript-jump">

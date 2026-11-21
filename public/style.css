@@ -236,20 +236,6 @@ body { display:block; }
 .axiom-frame main>header .controls { justify-content:flex-end; gap:6px; }
 .axiom-frame main>header .controls button { border-radius:8px; min-width:28px; height:28px; padding:4px 6px; }
 .axiom-frame main>header .controls #status { padding-left:4px; }
-.axiom-frame main>header nav[aria-label="会话视图"] {
-  display:flex; align-items:flex-end; gap:20px;
-  padding-top:10px; min-height:36px; box-sizing:border-box;
-}
-.axiom-frame main>header nav[aria-label="会话视图"] button {
-  height:26px; border:0; border-radius:0;
-  padding:0 3px 5px; background:transparent;
-  font-size:13px; color:var(--dsw-alias-label-secondary);
-  border-bottom:2px solid transparent;
-}
-.axiom-frame main>header nav[aria-label="会话视图"] .axiom-tab-active {
-  color:var(--dsw-alias-label-primary);
-  border-bottom-color:var(--dsw-alias-label-primary);
-}
 .axiom-conversation-body { flex:1; min-height:0; display:flex; flex-direction:column; }
 .axiom-conversation-body #transcript {
   width:100%; min-height:0; box-sizing:border-box;
@@ -521,4 +507,36 @@ body.rightbar-fullscreen .axiom-frame>.inspector {
 @media (max-width:767px) {
   .axiom-frame > .axiom-center {grid-column:1;grid-row:1;}
   .axiom-frame > .inspector {grid-column:1;grid-row:1;}
+}
+/* Original Harness message-row, assistant typography and toolbar composition. */
+.axiom-conversation-body[data-phase='active'] #transcript {
+  padding:16px 24px 28px;
+  container-type:inline-size;
+  overflow-x:clip;
+}
+.axiom-chat-column {
+  --dsh-chat-content-width:min(748px,100%);
+  width:min(100%,748px);
+  max-width:748px;
+  display:flex;
+  flex-direction:column;
+  margin:0 auto;
+  gap:12px;
+  min-width:0;
+}
+.axiom-chat-column .axiom-message {
+  width:100%;min-width:0;margin:0;padding:0;
+  font-size:var(--dsh-content-font-size,14px);line-height:24px;
+  color:var(--dsw-alias-label-primary);background:transparent;
+  border:0;border-radius:0;overflow-wrap:anywhere;white-space:normal;
+}
+.axiom-chat-column .axiom-message[data-chat-flow-kind='user'] {margin-top:12px;}
+.axiom-chat-column .axiom-message .markdown {font-size:14px;line-height:24px;}
+.axiom-chat-column .axiom-message .markdown p {margin:0;}
+.axiom-chat-column .axiom-message .markdown p+p {margin-top:16px;}
+.axiom-chat-column .axiom-message .markdown pre {font-size:12px;line-height:1.55;white-space:pre;}
+.axiom-chat-column .axiom-message .quote-message {font-size:0;line-height:1;}
+@media(max-width:767px) {
+  .axiom-conversation-body[data-phase='active'] #transcript {padding-inline:16px;}
+  .axiom-chat-column {width:100%;}
 }
