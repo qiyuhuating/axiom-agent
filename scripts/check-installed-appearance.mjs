@@ -14,7 +14,48 @@ try{
  const page=browser.contexts().flatMap(c=>c.pages()).find(p=>p.url().startsWith(base));assert.ok(page);
  const errors=[];page.on("pageerror",e=>errors.push(e.message));
  await page.waitForFunction(()=>document.querySelector("#status")?.textContent==="就绪",null,{timeout:30000});
- await page.getByRole('button',{name:'Pi 会话'}).click();
+ // Harness two-level ModelSelect, tested without changing real Pi settings.
+ const fakeModels=[
+  {provider:"fixture-A",id:"alpha-1"},{provider:"fixture-A",id:"beta-2"},
+  {provider:"fixture-B",id:"gamma-3"},{provider:"fixture-B",id:"delta-4"},
+  {provider:"fixture-B",id:"epsilon-5"}
+ ];
+ const calls=[];
+ await page.route("**/api/models",route=>route.fulfill({json:fakeModels}));
+ await page.route("**/api/levels",route=>route.fulfill({json:["low","medium","high"]}));
+ await page.route("**/api/action",route=>{
+  const request=route.request().postDataJSON();
+  if(request.action==="model"||request.action==="thinking"){
+   calls.push(request);return route.fulfill({json:{ok:true}});
+  }
+  return route.continue();
+ });
+ await page.reload();
+ await page.locator("#models").click();
+ const menu=page.getByRole("menu",{name:"模型和思考强度"});
+ await menu.getByRole("menuitem").first().click();
+ const modelMenuBackground=await menu.evaluate(element=>getComputedStyle(element).backgroundColor);
+ assert.match(modelMenuBackground,/^rgb\(/,"Model menu must have an opaque surface over the conversation");
+ const menuRect=await menu.boundingBox();
+ assert.ok(menuRect&&menuRect.x>=0&&menuRect.y>=0&&menuRect.x+menuRect.width<=await page.evaluate(()=>innerWidth),"Model menu must fit viewport"); await capture(page,"model-select.png");
+ await page.getByRole("textbox",{name:"搜索模型"}).fill("beta");
+ await menu.getByRole("menuitemradio",{name:"beta-2"}).click();
+ assert.deepEqual(calls.at(-1),{action:"model",value:{provider:"fixture-A",id:"beta-2"}});
+ await page.locator("#models").click();
+ await menu.getByRole("menuitem").last().click();
+ await menu.getByRole("menuitemradio",{name:"high"}).click();
+ assert.deepEqual(calls.at(-1),{action:"thinking",value:"high"});
+ await page.locator("#models").click();
+ await menu.getByRole("menuitem").first().click();
+ await page.keyboard.press("Escape");
+ await menu.getByRole("menuitem").first().waitFor();
+ await page.keyboard.press("Tab");
+ await menu.waitFor({state:"detached"});
+ await page.unroute("**/api/action");
+ await page.unroute("**/api/models");
+ await page.unroute("**/api/levels");
+ await page.reload();
+ await page.waitForFunction(()=>document.querySelector("#status")?.textContent==="就绪"); await page.getByRole('button',{name:'Pi 会话'}).click();
  const sessionControls=page.getByRole('dialog',{name:'Pi 会话'});
  await sessionControls.locator('pre').waitFor();
  await sessionControls.getByLabel('操作').selectOption('history');
@@ -32,6 +73,13 @@ try{
  const a=await theme();assert.equal(a.bg,"rgb(255, 255, 255)");assert.equal(a.radius,"28px");
  await capture(page,"light.png");
  await page.locator("#theme-toggle").click();assert.ok((await theme()).bg!=="rgb(255, 255, 255)");await capture(page,"dark.png");
+await page.locator("#models").click();
+const darkModelMenu=page.getByRole("menu",{name:"模型和思考强度"});
+await darkModelMenu.waitFor();
+assert.notEqual(await darkModelMenu.evaluate(element=>getComputedStyle(element).backgroundColor),"rgb(255, 255, 255)");
+await capture(page,"model-select-dark.png");
+await page.keyboard.press("Escape");
+await darkModelMenu.waitFor({state:"detached"});
  if(await page.locator("#sidebar-toggle").isVisible()){await page.locator("#sidebar-toggle").click();await page.waitForFunction(()=>document.querySelector('.sidebar')?.offsetWidth===56);await page.locator("#sidebar-open").click();}
  await page.locator("#theme-toggle").click();
  await page.locator("#show-workbench").click();await page.locator(".inspector").getByTitle("终端",{exact:true}).waitFor();

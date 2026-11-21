@@ -1,7 +1,6 @@
 import {
   ArrowUp,
   ChevronDown,
-  ChevronRight,
   Copy,
   Ellipsis,
   FolderOpen,
@@ -18,8 +17,6 @@ import MarkdownIt from "markdown-it";
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import assistantCss from "../vendor/dsh/chat/AssistantMarkdown.module.css";
-import chatCss from "../vendor/dsh/chat/ChatView.module.css";
-import commandCss from "../vendor/dsh/chat/GenericCommandCard.module.css";
 import actionsCss from "../vendor/dsh/chat/MessageIconActions.module.css";
 import messageCss from "../vendor/dsh/chat/MessageItem.module.css";
 import conversationCss from "../vendor/dsh/conversation/ConversationRoot.module.css";
@@ -40,6 +37,7 @@ import {
   ObservedChanges,
   PlanDock,
 } from "./harness-features.tsx";
+import { PiModelSelect } from "./model-select.tsx";
 import {
   action,
   addFiles,
@@ -555,51 +553,26 @@ function App() {
                   >
                     <Paperclip size={16} />
                   </button>
-                  <select
-                    id="models"
-                    aria-label="模型"
+                  <PiModelSelect
+                    models={p.models}
+                    levels={p.levels}
+                    current={p.state?.model}
+                    effort={p.state?.thinkingLevel}
+                    sessionId={p.state?.sessionId}
                     disabled={locked}
-                    value={
-                      p.state?.model
-                        ? JSON.stringify({ provider: p.state.model.provider, id: p.state.model.id })
-                        : ""
+                    onModel={(model) =>
+                      run(async () => {
+                        await action("model", model);
+                        await loadOptions();
+                      })
                     }
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      if (value)
-                        void run(async () => {
-                          await action("model", JSON.parse(value));
-                          await loadOptions();
-                        });
-                    }}
-                  >
-                    <option value="">选择可用模型</option>
-                    {p.models.map((m) => (
-                      <option
-                        key={m.provider + ":" + m.id}
-                        value={JSON.stringify({ provider: m.provider, id: m.id })}
-                      >
-                        {m.provider} / {m.id}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    id="levels"
-                    aria-label="思考强度"
-                    disabled={locked}
-                    value={p.state?.thinkingLevel ?? ""}
-                    onChange={(e) => {
-                      const level = e.target.value;
-                      void run(async () => {
+                    onEffort={(level) =>
+                      run(async () => {
                         await action("thinking", level);
                         await loadOptions();
-                      });
-                    }}
-                  >
-                    {p.levels.map((level) => (
-                      <option key={level}>{level}</option>
-                    ))}
-                  </select>
+                      })
+                    }
+                  />
                   <select
                     id="queue-mode"
                     aria-label="运行中的消息队列"

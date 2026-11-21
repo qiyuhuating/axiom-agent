@@ -540,3 +540,44 @@ body.rightbar-fullscreen .axiom-frame>.inspector {
   .axiom-conversation-body[data-phase='active'] #transcript {padding-inline:16px;}
   .axiom-chat-column {width:100%;}
 }
+/* Pi model catalog adapter using upstream Harness ModelSelect geometry and tokens. */
+.axiom-conversation-body .composer form .actions .axiom-model-select {
+  display:flex;flex:0 1 auto;min-width:0;max-width:min(260px,45%);
+}
+.axiom-conversation-body .composer form .actions .axiom-model-select button#models {
+  min-width:0;max-width:100%;font-size:13px;height:28px;
+}
+.axiom-model-menu[data-menu-material] {
+  min-width:min(280px,calc(100vw - 24px));max-width:min(420px,calc(100vw - 24px));
+  background:var(--dsw-alias-bg-base);
+  border:.5px solid var(--dsw-alias-border-l2);
+  box-shadow:var(--dsw-elevation-prominent,0 12px 32px rgb(0 0 0 / .14));
+}
+.axiom-model-menu .axiom-model-back {
+  display:flex;align-items:center;gap:7px;width:100%;min-height:34px;
+  border:0;border-radius:var(--dsw-radius-md);background:transparent;
+  padding:6px 8px;color:var(--dsw-alias-label-secondary);text-align:left;font-size:13px;
+}
+.axiom-model-menu .axiom-model-back:hover {background:var(--dsw-alias-interactive-bg-hover);}
+.axiom-model-menu .axiom-model-search {
+  display:flex;align-items:center;gap:8px;margin:3px 4px 7px;padding:6px 8px;
+  border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-module-platform);
+}
+.axiom-model-menu .axiom-model-search input {
+  min-width:0;flex:1;width:100%;border:none;background:transparent;outline:none;
+  color:var(--dsw-alias-label-primary);font-size:13px;
+}
+.axiom-model-menu .axiom-model-groups {overflow-y:auto;min-height:0;max-height:300px;}
+.axiom-model-menu .axiom-model-provider {
+  position:sticky;top:0;z-index:1;padding:8px 10px 5px;
+  font-size:11px;font-weight:600;line-height:16px;
+  color:var(--dsw-alias-label-tertiary);background:var(--dsw-specific-menu);
+}
+.axiom-model-menu .axiom-model-option {width:100%;}
+@media(max-width:767px){
+  .axiom-conversation-body .composer form .actions .axiom-model-select {max-width:min(190px,50%);}
+  .axiom-model-menu {max-height:min(360px,calc(100dvh - 60px));}
+}
+.axiom-model-spinner {animation:axiom-model-rotation 700ms linear infinite;}
+@keyframes axiom-model-rotation {to{transform:rotate(360deg);}}
+@media(prefers-reduced-motion:reduce){.axiom-model-spinner{animation:none;}}
