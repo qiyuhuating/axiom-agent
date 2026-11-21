@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { constants, closeSync, fstatSync, ftruncateSync, openSync, writeSync } from "node:fs";
+import { closeSync, constants, fstatSync, ftruncateSync, openSync, writeSync } from "node:fs";
 
 const [path, binary, ...args] = process.argv.slice(2);
 const limit = 8 * 1024 * 1024;
