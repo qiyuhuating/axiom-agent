@@ -1,10 +1,11 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { Cron } from "croner";
 import { assertTaskGraphCandidate } from "../vendor/dsh/team/task-graph.mjs";
 import { config, root } from "./config.mjs";
+import { openJobStore } from "./job-store.mjs";
 import { PiClient } from "./pi-client.mjs";
 import { platform } from "./platform/index.mjs";
 import { builtinPromptPath } from "./prompt-store.mjs";
@@ -12,26 +13,31 @@ import { retryTeam } from "./team-retry.mjs";
 
 const base = resolve(config.sessionDir, "axiom-jobs");
 mkdirSync(base, { recursive: true });
-const path = resolve(base, "state.json");
-const state = existsSync(path)
-  ? JSON.parse(readFileSync(path, "utf8"))
-  : { jobs: [], schedules: [], plans: {} };
+const store = openJobStore(base);
+const activeJobs = new Map(store.active().map((j) => [j.id, j]));
 const workers = new Map(),
   timers = new Map();
-state.mail ??= [];
 let closing = false;
-function persist() {
-  writeFileSync(path + ".tmp", JSON.stringify(state, null, 2));
-  renameSync(path + ".tmp", path);
-}
-for (const job of state.jobs)
-  if (["running", "queued"].includes(job.status)) {
-    job.status = "interrupted";
-    job.error = "Runtime stopped before completion";
-    if (/^[0-9a-f-]{36}$/.test(job.id))
-      rmSync(resolve(base, job.id, "agent"), { recursive: true, force: true });
+function persist(jobs = [], change) {
+  try {
+    store.save(jobs, change);
+    for (const j of jobs) {
+      if (["queued", "running"].includes(j.status)) activeJobs.set(j.id, j);
+      else activeJobs.delete(j.id);
+    }
+  } catch (error) {
+    console.error("Job storage unavailable:", error.code, error.errcode);
+    process.exit(1);
   }
-persist();
+}
+const interrupted = [...activeJobs.values()];
+for (const job of interrupted) {
+  job.status = "interrupted";
+  job.error = "Runtime stopped before completion";
+  if (/^[0-9a-f-]{36}$/.test(job.id))
+    rmSync(resolve(base, job.id, "agent"), { recursive: true, force: true });
+}
+if (interrupted.length) persist(interrupted, false);
 function validateSteps(steps) {
   if (
     !Array.isArray(steps) ||
@@ -60,9 +66,8 @@ function addJob(
     created: new Date().toISOString(),
     results: [],
   };
-  state.jobs.unshift(job);
   if (!defer) {
-    persist();
+    persist([job], false);
     pump();
   }
   return job;
@@ -70,36 +75,43 @@ function addJob(
 function pump() {
   if (closing) return;
   while (workers.size < 3) {
-    // Do not overlap writable jobs with any other worker sharing the workspace.
-    let changed;
+    const queued = [...activeJobs.values()].filter((j) => j.status === "queued");
+    if (!queued.length) return;
+    const jobsById = new Map(activeJobs);
+    for (const j of queued)
+      for (const id of j.blockedBy ?? []) {
+        if (!jobsById.has(id)) jobsById.set(id, store.job(id));
+      }
+    let blocked = false,
+      changed;
     do {
       changed = false;
-      for (const j of state.jobs.filter((x) => x.status === "queued")) {
+      for (const j of queued) {
+        if (j.status !== "queued") continue;
         if (
-          (j.blockedBy ?? []).some(
-            (id) =>
-              !state.jobs.some((x) => x.id === id) ||
-              ["failed", "cancelled", "interrupted", "blocked"].includes(
-                state.jobs.find((x) => x.id === id)?.status,
-              ),
-          )
+          (j.blockedBy ?? []).some((id) => {
+            const dep = jobsById.get(id);
+            return !dep || ["failed", "cancelled", "interrupted", "blocked"].includes(dep.status);
+          })
         ) {
           j.status = "blocked";
           j.error = "Dependency did not complete";
           changed = true;
-          persist();
+          blocked = true;
         }
       }
     } while (changed);
-    const next = state.jobs
-      .filter(
-        (j) =>
-          j.status === "queued" &&
-          (j.blockedBy ?? []).every(
-            (id) => state.jobs.find((x) => x.id === id)?.status === "completed",
-          ),
-      )
-      .at(-1);
+    if (blocked)
+      persist(
+        queued.filter((j) => j.status === "blocked"),
+        false,
+      );
+    const next = queued.find(
+      (j) =>
+        j.status === "queued" &&
+        (j.blockedBy ?? []).every((id) => jobsById.get(id)?.status === "completed"),
+    );
+    // Do not overlap writable jobs with any other worker sharing the workspace.
     if (!next || [...workers.values()].some((w) => w.job.write) || (next.write && workers.size > 0))
       return;
     const worker = {
@@ -109,14 +121,14 @@ function pump() {
       token: randomBytes(32).toString("hex"),
     };
     workers.set(next.id, worker);
-    void run(worker);
+    worker.finished = run(worker);
   }
 }
 async function run(worker) {
   const { job } = worker;
   job.status = "running";
   job.started = new Date().toISOString();
-  persist();
+  persist([job], false);
   try {
     const dir = resolve(base, job.id);
     mkdirSync(dir, { recursive: true });
@@ -205,7 +217,7 @@ async function run(worker) {
       if (worker.cancelled) throw Error("Cancelled");
       job.activity = "model";
       const inputs = (job.blockedBy ?? []).map((id) => {
-        const dep = state.jobs.find((j) => j.id === id);
+        const dep = store.job(id);
         return { node: dep.node, results: dep.results };
       });
       const context = job.team
@@ -223,7 +235,7 @@ async function run(worker) {
           .map((c) => c.text)
           .join("\n"),
       });
-      persist();
+      persist([job], false);
     }
     job.status = "completed";
   } catch (e) {
@@ -239,7 +251,7 @@ async function run(worker) {
       job.activity = "";
       job.finished = new Date().toISOString();
       workers.delete(job.id);
-      persist();
+      persist([job], false);
       pump();
     }
   }
@@ -247,24 +259,35 @@ async function run(worker) {
 function arm(s) {
   if (!s.enabled) return;
   const timer = new Cron(s.cron, { timezone: s.timezone, protect: true }, () => {
-    if (state.jobs.some((j) => j.scheduleId === s.id && ["queued", "running"].includes(j.status)))
-      return;
+    if ([...activeJobs.values()].some((j) => j.scheduleId === s.id)) return;
     addJob({ ...s, scheduleId: s.id });
   });
   timers.set(s.id, timer);
 }
-for (const s of state.schedules)
-  if (s.enabled) {
-    try {
-      arm(s);
-    } catch (e) {
-      s.enabled = false;
-      s.error = e.message;
-      persist();
-    }
+for (const s of store.enabledSchedules()) {
+  try {
+    arm(s);
+  } catch (e) {
+    s.enabled = false;
+    s.error = e.message;
+    persist([], { table: "schedules", id: s.id, value: s });
   }
+}
+export function jobPage(cursor, limit, session) {
+  const page = store.page(cursor, limit);
+  for (const j of [...page.jobs, ...page.teamJobs]) {
+    const live = activeJobs.get(j.id);
+    if (live) j.activity = live.activity;
+  }
+  return { ...page, ...store.context(session) };
+}
+export function jobDetail(id) {
+  return activeJobs.get(id) ?? store.job(id);
+}
 export function jobState() {
-  return state;
+  const snapshot = store.state;
+  snapshot.jobs = snapshot.jobs.map((j) => activeJobs.get(j.id) ?? j);
+  return snapshot;
 }
 export async function jobAction(action, value) {
   if (action === "start") return addJob({ ...value, steps: validateSteps(value.steps) });
@@ -316,18 +339,23 @@ export async function jobAction(action, value) {
       jobs[i].blockedBy = nodes[i].dependsOn.map(
         (id) => jobs[nodes.findIndex((n) => n.id === id)].id,
       );
-    persist();
+    persist(jobs, false);
     pump();
     return jobs;
   }
   if (action === "team-retry") {
-    const retried = retryTeam(state, value.id, workers);
-    persist();
+    const mail = store.mail(value.id);
+    const subset = { jobs: store.team(value.id), mail };
+    const retried = retryTeam(subset, value.id, workers);
+    const retained = new Set(subset.mail.map((m) => m.id));
+    persist(subset.jobs.filter((j) => j.status === "queued").reverse(), {
+      removeMail: mail.filter((m) => !retained.has(m.id)).map((m) => m.id),
+    });
     pump();
     return { retried };
   }
   if (action === "team-cancel") {
-    const team = state.jobs.filter(
+    const team = [...activeJobs.values()].filter(
       (j) => j.team === value.id && ["queued", "running"].includes(j.status),
     );
     if (!team.length) throw Error("No active team tasks");
@@ -339,7 +367,7 @@ export async function jobAction(action, value) {
         active.push(w);
       } else j.status = "cancelled";
     }
-    persist();
+    persist(team, false);
     const results = await Promise.allSettled(active.map((w) => w.client?.abort()));
     pump();
     const failed = results.filter((r) => r.status === "rejected");
@@ -348,11 +376,11 @@ export async function jobAction(action, value) {
     return { cancelled: team.length };
   }
   if (action === "cancel") {
-    const j = state.jobs.find((j) => j.id === value.id);
+    const j = activeJobs.get(value.id) ?? store.job(value.id);
     if (!j) throw Error("Job not found");
     if (j.status === "queued") {
       j.status = "cancelled";
-      persist();
+      persist([j], false);
       pump();
       return j;
     }
@@ -375,22 +403,24 @@ export async function jobAction(action, value) {
         write: false,
       };
     arm(s);
-    state.schedules.push(s);
-    persist();
+    persist([], { table: "schedules", id: s.id, value: s });
     return s;
   }
   if (action === "schedule-toggle" || action === "schedule-delete" || action === "schedule-run") {
-    const s = state.schedules.find((s) => s.id === value.id);
+    const s = store.schedule(value.id);
     if (!s) throw Error("Schedule not found");
     if (action === "schedule-run") return addJob({ ...s, scheduleId: s.id });
     timers.get(s.id)?.stop();
     timers.delete(s.id);
-    if (action === "schedule-delete") state.schedules = state.schedules.filter((x) => x !== s);
-    else {
+    if (action !== "schedule-delete") {
       s.enabled = !s.enabled;
       arm(s);
     }
-    persist();
+    persist([], {
+      table: "schedules",
+      id: s.id,
+      value: action === "schedule-delete" ? undefined : s,
+    });
     return { ok: true };
   }
   if (action === "plan") {
@@ -402,19 +432,22 @@ export async function jobAction(action, value) {
       value.items.some((x) => typeof x.text !== "string" || typeof x.done !== "boolean")
     )
       throw Error("Invalid plan");
-    state.plans[value.sessionId] = { goal: value.goal, items: value.items };
-    persist();
-    return state.plans[value.sessionId];
+    const plan = { goal: value.goal, items: value.items };
+    persist([], { table: "plans", id: value.sessionId, value: plan });
+    return plan;
   }
   throw Error("Unknown job action");
 }
 export async function closeJobs() {
   closing = true;
   for (const timer of timers.values()) timer.stop();
-  for (const w of workers.values()) {
+  const active = [...workers.values()];
+  for (const w of active) {
     w.cancelled = true;
     await w.client?.stop();
   }
+  await Promise.all(active.map((w) => w.finished));
+  store.close();
 }
 
 export function teamTool(token, { operation, to, text }) {
@@ -423,7 +456,7 @@ export function teamTool(token, { operation, to, text }) {
   );
   if (!worker) throw Error("Invalid or expired team worker credential");
   const job = worker.job,
-    team = state.jobs.filter((j) => j.team === job.team);
+    team = store.team(job.team);
   if (operation === "board")
     return team.map((j) => ({
       id: j.node,
@@ -431,8 +464,7 @@ export function teamTool(token, { operation, to, text }) {
       dependsOn: (j.blockedBy ?? []).map((id) => team.find((x) => x.id === id)?.node),
       results: j.results,
     }));
-  if (operation === "inbox")
-    return state.mail.filter((m) => m.team === job.team && m.to === job.node);
+  if (operation === "inbox") return store.inbox(job.team, job.node);
   if (operation === "send") {
     if (
       typeof text !== "string" ||
@@ -442,8 +474,7 @@ export function teamTool(token, { operation, to, text }) {
       to === job.node
     )
       throw Error("Invalid team message");
-    if (state.mail.filter((m) => m.team === job.team).length >= 1000)
-      throw Error("Team message limit");
+    if (store.mailCount(job.team) >= 1000) throw Error("Team message limit");
     const message = {
       id: randomUUID(),
       team: job.team,
@@ -452,8 +483,7 @@ export function teamTool(token, { operation, to, text }) {
       text,
       at: new Date().toISOString(),
     };
-    state.mail.push(message);
-    persist();
+    persist([], { table: "mail", id: message.id, value: message });
     return { id: message.id };
   }
   throw Error("Unknown team operation");

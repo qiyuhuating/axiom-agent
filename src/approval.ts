@@ -1,10 +1,19 @@
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { realpathSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { readPermission } from "./permission-policy.mjs";
 export default function (pi: ExtensionAPI) {
   pi.on("tool_call", async (event, ctx) => {
     const path = process.env.AXIOM_PERMISSION_FILE;
-    const policy = path && existsSync(path) ? JSON.parse(readFileSync(path, "utf8")).mode : "full";
+    let policy: string;
+    try {
+      policy = readPermission(path, process.env.AXIOM_WORKSPACE_ROOT ? "read-only" : "ask");
+    } catch {
+      return {
+        block: true,
+        reason: "Cannot read the Axiom permission policy. Repair it in Settings.",
+      };
+    }
     if (policy === "full") return;
     const allowed = [
       "read",
@@ -38,11 +47,16 @@ export default function (pi: ExtensionAPI) {
     if (policy === "read-only" && mutating)
       return { block: true, reason: "User enabled read-only mode" };
     if (policy === "ask" && mutating) {
-      const yes = await ctx.ui.confirm(
-        "Authorize " + event.toolName,
-        JSON.stringify(event.input, null, 2).slice(0, 6000),
-        { timeout: 120000 },
-      );
+      let yes: boolean;
+      try {
+        yes = await ctx.ui.confirm(
+          "Authorize " + event.toolName,
+          JSON.stringify(event.input, null, 2).slice(0, 6000),
+          { timeout: 120000 },
+        );
+      } catch {
+        return { block: true, reason: "Approval dialog unavailable" };
+      }
       if (!yes)
         return {
           block: true,

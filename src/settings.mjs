@@ -1,11 +1,13 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { ProjectTrustStore } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/trust-manager.js";
 import { config, root } from "./config.mjs";
+import { permissionModes, readPermission } from "./permission-policy.mjs";
+import { providerEndpoint } from "./provider-endpoint.mjs";
 import { workspacePath } from "./workspace.mjs";
 
 const exec = promisify(execFile);
@@ -20,14 +22,20 @@ export const readJson = async (path, fallback) => {
 };
 export async function writeJson(path, value) {
   const temp = path + "." + randomUUID() + ".tmp";
-  await writeFile(temp, JSON.stringify(value, null, 2), "utf8");
-  await rename(temp, path);
+  try {
+    await writeFile(temp, JSON.stringify(value, null, 2), { flag: "wx", mode: 0o600, flush: true });
+    await rename(temp, path);
+  } finally {
+    await unlink(temp).catch((error) => {
+      if (error.code !== "ENOENT") throw error;
+    });
+  }
 }
 export async function permission() {
-  return (await readJson(permissionPath, { mode: "full" })).mode;
+  return readPermission(permissionPath, "ask");
 }
 export async function setPermission(mode) {
-  if (!["full", "ask", "read-only"].includes(mode)) throw Error("Invalid permission mode");
+  if (!permissionModes.includes(mode)) throw Error("Invalid permission mode");
   await writeJson(permissionPath, { mode });
   return { mode };
 }
@@ -211,15 +219,7 @@ export async function providerAction(value) {
     return { ok: true };
   }
   if (operation !== "upsert") throw Error("Invalid provider operation");
-  const url = new URL(value.baseUrl);
-  if (
-    !["http:", "https:"].includes(url.protocol) ||
-    url.username ||
-    url.password ||
-    url.search ||
-    url.hash
-  )
-    throw Error("Invalid API endpoint");
+  const url = providerEndpoint(value.baseUrl);
   const envKey = String(value.envKey || "");
   if (envKey && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(envKey))
     throw Error("Enter an environment variable name, not a secret");

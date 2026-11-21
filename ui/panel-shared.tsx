@@ -23,7 +23,11 @@ export async function api(path: string, data?: unknown) {
       "API " + path + ": " + r.status + " " + (r.statusText || "Invalid server response"),
     );
   }
-  if (!r.ok) throw Error(value?.error || "API " + path + ": " + r.status + " " + r.statusText);
+  if (!r.ok) {
+    const message = value?.error || "API " + path + ": " + r.status + " " + r.statusText;
+    const id = r.headers.get("x-request-id");
+    throw Error(id && r.status >= 500 ? message + "（请求编号 " + id + "）" : message);
+  }
   return value;
 }
 export const terminalAction = (action: string, value?: unknown) =>

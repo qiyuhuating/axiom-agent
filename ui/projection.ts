@@ -58,6 +58,10 @@ export type Job = {
   blockedBy: string[];
 };
 type JobState = {
+  nextCursor: string | null;
+  cursor: string;
+  teamJobs: Job[];
+  mail: any[];
   jobs: Job[];
   schedules: any[];
   plans: Record<string, { goal: string; items: { text: string; done: boolean }[] }>;
@@ -323,17 +327,29 @@ export async function refresh() {
     }
   }
 }
-let jobRequest: Promise<JobState> | undefined;
-export function loadJobs() {
-  jobRequest ??= api("jobs")
-    .then((jobs: JobState) => {
-      update({ jobs });
+let jobCursor = "";
+let jobRequest: { key: string; pending: Promise<JobState> } | undefined;
+export function loadJobs(cursor = jobCursor) {
+  jobCursor = cursor;
+  const session = snapshot.state?.sessionId ?? "";
+  const key = new URLSearchParams({ view: "page", session });
+  if (cursor) key.set("cursor", cursor);
+  const path = key.toString();
+  if (jobRequest?.key === path) return jobRequest.pending;
+  const pending: Promise<JobState> = api("jobs?" + path)
+    .then((page) => {
+      const jobs: JobState = page;
+      if (jobRequest?.pending === pending && (snapshot.state?.sessionId ?? "") === session) {
+        jobCursor = page.cursor;
+        update({ jobs });
+      }
       return jobs;
     })
     .finally(() => {
-      jobRequest = undefined;
+      if (jobRequest?.pending === pending) jobRequest = undefined;
     });
-  return jobRequest;
+  jobRequest = { key: path, pending };
+  return pending;
 }
 export async function loadOptions() {
   const [models, levels, state] = await Promise.all([api("models"), api("levels"), api("state")]);

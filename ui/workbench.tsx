@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { decodeRequest } from "../src/interaction-protocol.mjs";
-import { TeamOverview } from "./harness-features.tsx";
+import { JobDetails, TeamOverview } from "./harness-features.tsx";
 import { api, dirtyTabs, errorBox, Header, msg } from "./panel-shared.tsx";
 import {
   appendDraft,
@@ -627,10 +627,13 @@ function SettingsView() {
             Agent 权限
             <select
               aria-label="权限模式"
-              value={value?.permission || "full"}
+              value={value?.permission ?? ""}
               onChange={(e) => void mode(e.target.value)}
             >
-              <option value="full">完全信任（现有行为）</option>
+              <option value="" disabled>
+                选择权限模式
+              </option>
+              <option value="full">完全信任</option>
               <option value="ask">非只读工具逐次审批</option>
               <option value="read-only">只读工具</option>
             </select>
@@ -901,6 +904,21 @@ function Jobs() {
     [cron, setCron] = useState("0 9 * * *"),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
+  const [expandedJob, setExpandedJob] = useState("");
+  const [previousPages, setPreviousPages] = useState<string[]>([]);
+  async function navigate(cursor: string, history: string[]) {
+    setBusy(true);
+    try {
+      await loadJobs(cursor);
+      setPreviousPages(history);
+      setExpandedJob("");
+      setError("");
+    } catch (e) {
+      setError(msg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
   const reloadJobs = data.load;
   useEffect(() => {
     let mounted = true;
@@ -936,7 +954,9 @@ function Jobs() {
     setBusy(true);
     try {
       await jobAction(a, v);
-      await loadJobs();
+      const creating = ["start", "team", "dag", "schedule-run"].includes(a);
+      await loadJobs(creating ? "" : undefined);
+      if (creating) setPreviousPages([]);
       setError("");
     } catch (e) {
       setError(msg(e));
@@ -1137,7 +1157,7 @@ function Jobs() {
             </div>
           ))}
         <h4>执行历史</h4>
-        <TeamOverview jobs={data.value.jobs} />
+        <TeamOverview jobs={jobs?.teamJobs ?? []} />
         {data.value.jobs.map((j: any) => (
           <div className="wb-job" key={j.id}>
             <strong>{j.label}</strong>
@@ -1151,18 +1171,37 @@ function Jobs() {
                 取消
               </Button>
             )}
-            {j.error && errorBox(j.error)}
-            {j.results.map((r: any, i: number) => (
-              <details key={i}>
-                <summary>步骤 {i + 1}</summary>
-                <pre>{r.text}</pre>
-                <Button size="sm" onClick={() => insert(r.text)}>
-                  引用结果
-                </Button>
-              </details>
-            ))}
+            <Button
+              size="sm"
+              aria-expanded={expandedJob === j.id}
+              onClick={() => setExpandedJob(expandedJob === j.id ? "" : j.id)}
+            >
+              任务详情
+            </Button>
+            {expandedJob === j.id && <JobDetails job={j} insert={insert} />}
           </div>
         ))}
+        {jobs?.cursor && (
+          <Button disabled={busy} onClick={() => void navigate("", [])}>
+            返回最新任务
+          </Button>
+        )}
+        {!!previousPages.length && (
+          <Button
+            disabled={busy}
+            onClick={() => void navigate(previousPages.at(-1)!, previousPages.slice(0, -1))}
+          >
+            上一页
+          </Button>
+        )}
+        {jobs?.nextCursor && (
+          <Button
+            disabled={busy}
+            onClick={() => void navigate(jobs.nextCursor!, [...previousPages, jobs.cursor])}
+          >
+            下一页
+          </Button>
+        )}
       </div>
     </div>
   );

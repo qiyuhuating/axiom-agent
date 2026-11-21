@@ -38,7 +38,7 @@ test("prompt migration, edits and reset survive host restarts and session cleanu
   const cfg = join(dir, "config.json");
   const sessions = join(dir, "sessions");
   await mkdir(sessions);
-  await writeFile(cfg, JSON.stringify({ sessionDir: sessions, workspace: dir, runtimePort: 4798 }));
+  await writeFile(cfg, JSON.stringify({ sessionDir: sessions, workspace: join(dir, "workspace"), runtimePort: 4798 }));
   await writeFile(join(sessions, "builtin-prompt.json"), JSON.stringify({ text: "Legacy edit" }));
   const run = (operation) => JSON.parse(execFileSync(process.execPath,
     ["--input-type=module", "-e",

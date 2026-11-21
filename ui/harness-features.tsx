@@ -207,6 +207,49 @@ function displayState(status: string) {
           ? "warning"
           : "idle";
 }
+export function JobDetails({ job, insert }: { job: Job; insert?: (s: string) => void }) {
+  const [detail, setDetail] = useState<any>(null),
+    [error, setError] = useState("");
+  useEffect(() => {
+    let current = true,
+      timer: ReturnType<typeof setTimeout>;
+    async function read() {
+      try {
+        const value = await api("jobs?view=detail&id=" + encodeURIComponent(job.id));
+        if (current) {
+          setDetail(value);
+          setError("");
+        }
+      } catch (e) {
+        if (current) setError(String(e));
+      }
+      if (current && ["queued", "running"].includes(job.status)) timer = setTimeout(read, 3000);
+    }
+    void read();
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+  }, [job.id, job.status]);
+  if (error) return <p role="alert">{error}</p>;
+  if (!detail || detail.id !== job.id) return <p>正在读取详情…</p>;
+  return (
+    <>
+      <p>{maskCredentials(detail.error || detail.steps?.join("\n") || "")}</p>
+      {detail.results?.map((r: any, i: number) => (
+        <details key={i}>
+          <summary>步骤 {i + 1}</summary>
+          <pre>{r.text}</pre>
+          {insert && (
+            <Button size="sm" onClick={() => insert(r.text)}>
+              引用结果
+            </Button>
+          )}
+        </details>
+      ))}
+    </>
+  );
+}
 export function TeamOverview({ jobs }: { jobs: Job[] }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const teams = new Map<string, Job[]>();
@@ -277,9 +320,7 @@ export function TeamOverview({ jobs }: { jobs: Job[] }) {
                 </button>
                 {expanded === j.id && (
                   <div className={teamCss.details}>
-                    <p className={teamCss.description}>
-                      {maskCredentials(j.activity ?? j.error ?? j.steps?.join("\n") ?? "")}
-                    </p>
+                    <JobDetails job={j} />
                     <p className={teamCss.owner}>成员：{j.node ?? j.id.slice(0, 8)}</p>
                     {j.blockedBy?.length > 0 && <p>依赖：{j.blockedBy.join(", ")}</p>}
                   </div>

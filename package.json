@@ -1,12 +1,13 @@
 {
   "name": "axiom-agent",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Pi-powered local engineering workbench with DeepSeek Harness components",
   "directories": {
     "test": "test"
   },
   "scripts": {
     "test": "node --test",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-include=\"src/**\"",
     "start": "node src/server.mjs",
     "pi": "node scripts/pi.mjs",
     "build:ui": "node scripts/build-ui.mjs",

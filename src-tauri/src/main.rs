@@ -3,7 +3,7 @@
 use std::os::windows::process::CommandExt;
 use std::{
     fs::{self, OpenOptions},
-    io::{BufRead, BufReader, Read, Write},
+    io::{BufRead, BufReader, Read, Seek, SeekFrom, Write},
     process::{Child, Command, Stdio},
     sync::{mpsc, Arc, Mutex},
     thread,
@@ -12,6 +12,23 @@ use std::{
 use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 
 struct Host(Mutex<Child>);
+
+struct CappedLog(std::fs::File);
+impl Write for CappedLog {
+    fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
+        const LIMIT: usize = 8 * 1024 * 1024;
+        let tail = &data[data.len().saturating_sub(LIMIT)..];
+        if self.0.metadata()?.len() + tail.len() as u64 > LIMIT as u64 {
+            self.0.set_len(0)?;
+        }
+        self.0.seek(SeekFrom::End(0))?;
+        self.0.write_all(tail)?;
+        Ok(data.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.0.flush()
+    }
+}
 
 fn stop_host(child: &mut Child) {
     // EOF is the desktop host's graceful shutdown signal.
@@ -97,7 +114,8 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     )))?;
     let log = OpenOptions::new()
         .create(true)
-        .append(true)
+        .write(true)
+        .truncate(false)
         .open(data.join("desktop-host.log"))?;
     let config_bytes = fs::read(&config)?;
     let settings: serde_json::Value = serde_json::from_slice(
@@ -132,7 +150,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .spawn()?;
     let stdout = child.stdout.take().expect("piped stdout");
     let stderr = child.stderr.take().expect("piped stderr");
-    let log = Arc::new(Mutex::new(log));
+    let log = Arc::new(Mutex::new(CappedLog(log)));
     let stderr_log = Arc::clone(&log);
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || drain_host_output(stderr, stderr_log, None));
@@ -185,6 +203,22 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn desktop_log_rolls_over_on_windows() {
+        let path = std::env::temp_dir().join(format!("axiom-log-test-{}", std::process::id()));
+        let file = OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&path)
+            .unwrap();
+        let mut log = CappedLog(file);
+        log.write_all(&vec![b'x'; 8 * 1024 * 1024]).unwrap();
+        log.write_all(b"new").unwrap();
+        drop(log);
+        assert_eq!(fs::read(&path).unwrap(), b"new");
+        fs::remove_file(path).unwrap();
+    }
 
     #[test]
     fn concurrent_log_records_preserve_stdout_readiness() {

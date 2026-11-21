@@ -30,7 +30,11 @@ Open [http://127.0.0.1:4789](http://127.0.0.1:4789). The workbench binds to loop
 
 ### Configuration
 
-Copy the example and set the workspace, session directory and optional model/provider. Omit provider/model to use Pi's defaults. `maxOutputTokens` is optional; when set it caps output for that instance. The independent runtime uses port 4790 unless overridden.
+Copy the example and set the workspace, session directory and optional model/provider. Omit provider/model to use Pi's defaults. A positive integer `maxOutputTokens` caps explicit output-token fields sent by the OpenRouter adapter. The independent runtime defaults to the workbench port plus one (normally 4790).
+
+Use a private local NTFS session directory outside the workspace. The first launch creates a shared runtime credential there using an atomic hard link. Each concurrently running configuration needs its own session directory and distinct runtime and Rust terminal ports. An ephemeral workbench port (`0`) requires an explicit runtime port. A missing file named by `AXIOM_CONFIG` stops startup. An omitted default config uses built-in settings.
+
+A new foreground profile asks before mutating tools. Existing explicit permission choices carry forward. Review custom providers when upgrading. Remote endpoints require HTTPS and a key environment variable. Loopback HTTP remains available for local models.
 
 `npm run pi -- <arguments>` passes arguments to the upstream Pi CLI in the configured workspace. Native commands, extensions, skills and model management are available independently of the GUI. CLI sessions use Pi's native default store unless explicitly directed otherwise. Do not open the same active JSONL session in two writer processes.
 
@@ -60,6 +64,28 @@ The NSIS build stages a checksum-verified Node.js 24.16.0 distribution and npm, 
 | Tasks | Pi workers, upstream graph validation, Croner |
 | Windows write restrictions | Upstream restricted-token ACL runner |
 | Storage | Native Pi JSONL sessions and local runtime state |
+
+### Operating the workbench
+
+| Component | Owns | Check |
+| --- | --- | --- |
+| Workbench host | Browser requests, foreground Pi process and editor revisions | `GET /api/health` reports process uptime and local JSON error counters |
+| Background runtime | Jobs, schedules, Cordis and the terminal backend | `GET /api/runtime-health` through the workbench starts or checks the configured instance and returns its identity |
+| Windows gateway and PTY daemon | Desktop ingress and terminal sessions | Run `node scripts/check-desktop-runtime.mjs` against the staged payload |
+
+`uptimeSeconds` and `httpErrors.client/server` reset when their owning process restarts. A 409 on an editor save requires reopening the file. A 413 identifies a request above its route budget. For a 5xx with a request ID, search the host's stderr (desktop installations use `desktop-host.log`) and `sessionDir/runtime.log` for that ID. Records include service, method, status, UTC time and available system error code. An ambiguous write after a lost connection requires checking job or terminal state before retrying.
+
+Before upgrading, finish active work and stop the runtime using the old configuration. Back up the stopped session directory, config and Pi profile to private storage. If a legacy session directory is inside the workspace, move the complete stopped directory outside it and update `sessionDir`. Remove the exposed copy from the workspace after verifying the backup and migration. The new host verifies the runtime's workspace, session directory and terminal backend. On identity mismatch, check the config and stop the old instance with its own configuration. For rollback, stop the candidate and restore the matching program, configuration and backup together. Keep the original backup until session, terminal and job history have been checked.
+
+### Job storage and log retention in 0.5.1
+
+The runtime stores jobs in `sessionDir/axiom-jobs/jobs.sqlite`. On first start it imports the previous `state.json` in one transaction and keeps that file for rollback. Job transitions update only the affected rows. On upgrade, the runtime builds job status and team indexes and migrates the shared metadata record into one row per plan, schedule and message in a single transaction. Normal startup loads unfinished jobs and enabled schedules. The workbench requests task summaries in pages of 50 and fetches steps, errors and results when a task is expanded. Authenticated clients can call `GET /api/jobs?view=page&limit=50` (limit 1–200), then pass the returned `nextCursor` as `cursor` until it is null. A page's own `cursor` refreshes that same page. New jobs appear on a fresh first page. Add `session` for the current plan. Use `GET /api/jobs?view=detail&id=...` for a full task. The original `GET /api/jobs` keeps its complete snapshot response. Restore a pre-upgrade backup before running an older binary. Stop the runtime before backing up or restoring the complete directory. Downgrading to 0.5.0 reads the legacy snapshot and cannot see work performed since migration.
+
+A failed storage commit stops the background runtime. Free space on the session volume and request runtime health from the workbench to restart it. Check job state before resubmitting. Previously committed jobs are retained, and unfinished work is marked interrupted on restart.
+
+The runtime, Rust terminal and desktop host each cap their diagnostic log at 8 MiB. Reaching the cap starts a new log in the same file. Export diagnostics before rollover if longer retention is required. When storage is full, diagnostic records may be lost.
+
+Use `node scripts/check-job-storage.mjs 3600` for the isolated one-hour store workload. In WSL, run `sh scripts/check-storage-full.sh /absolute/path/to/node` as root for an isolated 12 MiB tmpfs test. Both checks require Node 24.
 
 ## Development
 

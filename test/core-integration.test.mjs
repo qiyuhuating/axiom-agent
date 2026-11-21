@@ -55,6 +55,37 @@ test("HTTP host: authenticated runtime, restart, extension confirmation and stal
   const post=(path,body,authorized=true)=>fetch(base+"/api/"+path,{method:"POST",headers:{"Content-Type":"application/json",...(authorized?{Origin:base,"X-Axiom-Client":"1"}:{Origin:"https://example.invalid"})},body:JSON.stringify(body),signal:AbortSignal.timeout(35000)});
   try {
     await until(()=>base,20000);
+    token=await readFile(join(f.sessionDir,"runtime.token"),"utf8");
+    assert.equal((await get("settings")).permission,"ask");
+    const bad = await post("permission",null);
+    assert.equal(bad.status,400);
+    const requestId = bad.headers.get("x-request-id");
+    assert.ok(requestId);
+    assert.equal((await bad.json()).requestId,requestId);
+    await until(()=>stderr.includes(requestId));
+    assert.ok((await get("health")).httpErrors.client >= 1);
+    const policyFile = join(f.sessionDir,"permission.json");
+    await writeFile(policyFile, "fixture-policy-private-text");
+    const damaged = await fetch(base+"/api/settings");
+    assert.equal(damaged.status,500);
+    const failure = await damaged.json();
+    assert.equal(failure.error,"Internal service error");
+    assert.equal(failure.requestId,damaged.headers.get("x-request-id"));
+    await until(()=>stderr.includes(failure.requestId));
+    assert.ok(!stderr.includes("fixture-policy-private-text"));
+    assert.ok((await get("health")).httpErrors.server >= 1);
+    assert.ok((await post("permission",{mode:"ask"})).ok);
+    assert.equal((await get("settings")).permission,"ask");
+    const stream = new ReadableStream({start(controller) {
+      controller.enqueue(new TextEncoder().encode(JSON.stringify({text:"测".repeat(60000)})));
+      controller.close();
+    }});
+    const streamed = await fetch(base+"/api/builtin-prompt",{method:"POST",duplex:"half",body:stream,
+      headers:{Origin:base,"X-Axiom-Client":"1","Content-Type":"application/json"}});
+    assert.equal(streamed.status,413);
+    assert.equal((await post("provider-action",{operation:"upsert",name:"axiom-custom-test",envKey:"TEST_KEY",baseUrl:"http://example.invalid"})).status,400);
+    const tooLarge = await post("permission",{mode:"x".repeat(2*1024*1024)});
+    assert.equal(tooLarge.status,413);
     const initialPrompt = await get("builtin-prompt");
     assert.equal(initialPrompt.text, initialPrompt.defaultText);
     const promptEdit = {text:"Keep the fixture responses brief.",expected:initialPrompt.text};
@@ -73,9 +104,12 @@ test("HTTP host: authenticated runtime, restart, extension confirmation and stal
       assert.equal(invalidHost,403);
       const asset=await fetch(base+"/app.js");assert.ok(asset.ok);assert.match(await asset.text(),/EventSource/);
     }
-    token=await readFile(join(f.sessionDir,"runtime.token"),"utf8");
     const first=await get("runtime-health");
     assert.equal(first.ok,true);
+    assert.equal(first.workspace,f.workspace);
+    assert.equal(first.sessionDir,f.sessionDir);
+    assert.equal((await runtimeRequest("/api/job-action",{method:"POST",body:"null"})).status,400);
+    assert.equal((await fetch(runtime+"/api/jobs",{headers:{Authorization:token}})).status,403);
     for(const headers of [{},{Authorization:"Bearer wrong"}]){
       const res=await fetch(runtime+"/api/jobs",{headers,signal:AbortSignal.timeout(5000)});
       assert.equal(res.status,403);

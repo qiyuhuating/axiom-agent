@@ -10,23 +10,27 @@ import {
   unlink,
   writeFile,
 } from "node:fs/promises";
-import { basename, dirname, extname, isAbsolute, relative, resolve, sep } from "node:path";
+import { basename, dirname, extname, isAbsolute, resolve } from "node:path";
 import { promisify } from "node:util";
 import { config } from "./config.mjs";
+import { HttpError } from "./http.mjs";
+import { contains } from "./path-boundary.mjs";
 
 const exec = promisify(execFile);
 const digest = (data) => createHash("sha256").update(data).digest("hex");
-export function contains(base, path) {
-  const rel = relative(base, path);
-  return rel === "" || (!isAbsolute(rel) && rel !== ".." && !rel.startsWith(".." + sep));
-}
+
+export { contains } from "./path-boundary.mjs";
 export async function workspacePath(path = "") {
   if (typeof path !== "string" || isAbsolute(path) || path.includes("\0"))
     throw Error("Invalid workspace path");
   const base = await realpath(config.workspace),
     target = resolve(base, path);
   if (!contains(base, target)) throw Error("Outside workspace");
-  const actual = await realpath(target);
+  const actual = await realpath(target).catch((error) => {
+    if (["ENOENT", "ENOTDIR"].includes(error.code))
+      throw new HttpError(404, "Workspace path not found");
+    throw error;
+  });
   if (!contains(base, actual)) throw Error("Outside workspace");
   return actual;
 }
@@ -58,8 +62,9 @@ export async function openFile(path) {
     info = await stat(file);
   if (!info.isFile() || info.size > 10 * 1024 * 1024)
     throw Error("Not a file or exceeds 10 MiB preview limit");
-  const data = await readFile(file),
-    mime = mimeTypes[extname(file).toLowerCase()];
+  const mime = mimeTypes[extname(file).toLowerCase()];
+  if (!mime && info.size > 1024 * 1024) return { kind: "binary", size: info.size };
+  const data = await readFile(file);
   if (mime)
     return {
       kind: "media",
@@ -76,6 +81,7 @@ export async function openFile(path) {
   }
   return { kind: "text", text, revision: digest(data), size: data.length };
 }
+const activeSaves = new Set();
 export async function saveFile({ path, text, revision }) {
   if (
     typeof text !== "string" ||
@@ -83,16 +89,22 @@ export async function saveFile({ path, text, revision }) {
     typeof revision !== "string"
   )
     throw Error("Invalid editor payload");
-  const file = await workspacePath(path),
-    before = await readFile(file);
-  if (digest(before) !== revision) throw Error("File changed on disk. Reopen before saving.");
+  const file = await workspacePath(path);
+  const key = process.platform === "win32" ? file.toLowerCase() : file;
+  if (activeSaves.has(key))
+    throw new HttpError(409, "A save is in progress. Reopen before saving.");
+  activeSaves.add(key);
   const temp = resolve(dirname(file), ".axiom-" + randomUUID() + ".tmp");
   try {
-    await writeFile(temp, text, { flag: "wx", mode: (await stat(file)).mode });
+    const info = await stat(file);
+    if (info.size > 1024 * 1024 || digest(await readFile(file)) !== revision)
+      throw new HttpError(409, "File changed on disk. Reopen before saving.");
+    await writeFile(temp, text, { flag: "wx", mode: info.mode, flush: true });
     if (digest(await readFile(file)) !== revision)
-      throw Error("File changed on disk. Reopen before saving.");
+      throw new HttpError(409, "File changed on disk. Reopen before saving.");
     await rename(temp, file);
   } finally {
+    activeSaves.delete(key);
     await unlink(temp).catch((e) => {
       if (e.code !== "ENOENT") throw e;
     });
