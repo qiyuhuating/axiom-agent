@@ -79,7 +79,7 @@ Before upgrading, finish active work and stop the runtime using the old configur
 
 ### Job storage and log retention in 0.5.1
 
-The runtime stores jobs in `sessionDir/axiom-jobs/jobs.sqlite`. On first start it imports the previous `state.json` in one transaction and keeps that file for rollback. Job transitions update only the affected rows. Plans, schedules and team mail share a separate metadata record. Stop the runtime before backing up or restoring the complete directory. Downgrading to 0.5.0 reads the legacy snapshot and cannot see work performed since migration.
+The runtime stores jobs in `sessionDir/axiom-jobs/jobs.sqlite`. On first start it imports the previous `state.json` in one transaction and keeps that file for rollback. Job transitions update only the affected rows. On upgrade, the runtime builds job status and team indexes and migrates the shared metadata record into one row per plan, schedule and message in a single transaction. Normal startup loads unfinished jobs and enabled schedules. The explicit jobs snapshot still reads the complete history. Restore a pre-upgrade backup before running an older binary. Stop the runtime before backing up or restoring the complete directory. Downgrading to 0.5.0 reads the legacy snapshot and cannot see work performed since migration.
 
 A failed storage commit stops the background runtime. Free space on the session volume and request runtime health from the workbench to restart it. Check job state before resubmitting. Previously committed jobs are retained, and unfinished work is marked interrupted on restart.
 
