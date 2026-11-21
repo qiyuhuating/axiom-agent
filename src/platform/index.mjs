@@ -1,6 +1,5 @@
-import { spawn } from "node:child_process";
-import { closeSync, openSync } from "node:fs";
 import { resolve } from "node:path";
+import { launchLogged } from "../log-launch.mjs";
 import { windows } from "./windows.mjs";
 
 const unsupportedSandbox = () => {
@@ -18,19 +17,5 @@ const posix = {
 export const platform = process.platform === "win32" ? windows : posix;
 
 export function startDetachedRuntime(root, logPath) {
-  const fd = openSync(logPath, "a");
-  try {
-    const child = spawn(process.execPath, [resolve(root, "src/runtime.mjs")], {
-      cwd: root,
-      env: process.env,
-      detached: true,
-      ...(process.platform === "win32" ? { windowsHide: true } : {}),
-      stdio: ["ignore", fd, fd],
-    });
-    child.on("error", (e) => console.error("Runtime launch:", e.message));
-    child.unref();
-    return child;
-  } finally {
-    closeSync(fd);
-  }
+  return launchLogged(process.execPath, [resolve(root, "src/runtime.mjs")], root, logPath);
 }

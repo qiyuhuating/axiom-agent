@@ -7,6 +7,7 @@ export class PiClient extends RpcClient {
   onDisconnect;
   #stopping = false;
   #timeoutMs;
+  #stepWaiters = new Set();
   constructor(options = {}, timeoutMs = 30000) {
     super(options);
     this.#timeoutMs = timeoutMs;
@@ -29,6 +30,7 @@ export class PiClient extends RpcClient {
     this.disconnected = true;
     this.exitError = error;
     this.rejectPendingRequests(error);
+    for (const reject of this.#stepWaiters) reject(error);
     this.onDisconnect?.(error);
   }
   async send(command) {
@@ -57,12 +59,42 @@ export class PiClient extends RpcClient {
   async stop() {
     this.#stopping = true;
     this.rejectPendingRequests(Error("Pi RPC stopped"));
+    for (const reject of this.#stepWaiters) reject(Error("Pi RPC stopped"));
     if (this.process?.exitCode !== null || this.process?.signalCode) {
       this.stopReadingStdout?.();
       this.process = null;
       return;
     }
     await super.stop();
+  }
+  async runStep(message, timeout = 30 * 60 * 1000) {
+    if (this.disconnected) throw this.exitError;
+    let off, timer, fail, last;
+    const settled = new Promise((resolve, reject) => {
+      fail = reject;
+      this.#stepWaiters.add(reject);
+      timer = setTimeout(() => reject(Error("Workflow step timed out")), timeout);
+      off = this.onEvent((event) => {
+        if (event.type === "message_end" && event.message?.role === "assistant")
+          last = event.message;
+        if (event.type === "agent_settled") {
+          if (event.aborted) reject(Error("Workflow aborted"));
+          else if (!last || ["error", "aborted"].includes(last.stopReason))
+            reject(Error(last?.errorMessage || "No completed assistant response"));
+          else resolve(last);
+        }
+      });
+    });
+    settled.catch(() => {});
+    try {
+      const disposition = await this.prompt(message);
+      if (disposition === "handled") throw Error("Workflow steps must be model prompts");
+      return await settled;
+    } finally {
+      clearTimeout(timer);
+      off();
+      this.#stepWaiters.delete(fail);
+    }
   }
   async respond(record) {
     const stdin = this.process?.stdin;

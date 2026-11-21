@@ -1,8 +1,15 @@
 import { existsSync, readFileSync } from "node:fs";
+import { providerEndpoint } from "./provider-endpoint.mjs";
 export default function (pi) {
   const path = process.env.AXIOM_PROVIDER_FILE;
   if (!path || !existsSync(path)) return;
   for (const p of JSON.parse(readFileSync(path, "utf8"))) {
+    try {
+      providerEndpoint(p.baseUrl);
+    } catch {
+      console.error("Skipped a custom provider with an invalid endpoint. Check provider settings.");
+      continue;
+    }
     pi.registerProvider(p.name, {
       baseUrl: p.baseUrl,
       api: p.api,

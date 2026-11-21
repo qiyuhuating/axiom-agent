@@ -3,15 +3,32 @@
 use std::os::windows::process::CommandExt;
 use std::{
     fs::{self, OpenOptions},
-    io::{BufRead, BufReader},
+    io::{BufRead, BufReader, Read, Seek, SeekFrom, Write},
     process::{Child, Command, Stdio},
-    sync::{mpsc, Mutex},
+    sync::{mpsc, Arc, Mutex},
     thread,
     time::{Duration, Instant},
 };
 use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 
 struct Host(Mutex<Child>);
+
+struct CappedLog(std::fs::File);
+impl Write for CappedLog {
+    fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
+        const LIMIT: usize = 8 * 1024 * 1024;
+        let tail = &data[data.len().saturating_sub(LIMIT)..];
+        if self.0.metadata()?.len() + tail.len() as u64 > LIMIT as u64 {
+            self.0.set_len(0)?;
+        }
+        self.0.seek(SeekFrom::End(0))?;
+        self.0.write_all(tail)?;
+        Ok(data.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.0.flush()
+    }
+}
 
 fn stop_host(child: &mut Child) {
     // EOF is the desktop host's graceful shutdown signal.
@@ -25,6 +42,44 @@ fn stop_host(child: &mut Child) {
     }
     let _ = child.kill();
     let _ = child.wait();
+}
+
+// Serialize stderr and stdout records; inherited file handles can interleave
+// writes from different processes (including the readiness record).
+fn drain_host_output(
+    input: impl Read,
+    log: Arc<Mutex<impl Write>>,
+    ready: Option<mpsc::Sender<u16>>,
+) {
+    let mut reader = BufReader::new(input);
+    let mut line = Vec::new();
+    let mut ready = ready;
+    loop {
+        line.clear();
+        match reader.read_until(b'\n', &mut line) {
+            Ok(0) | Err(_) => break,
+            Ok(_) => {}
+        }
+        if !line.ends_with(b"\n") {
+            line.push(b'\n');
+        }
+        if let Ok(mut log) = log.lock() {
+            let _ = log.write_all(&line);
+        }
+        if let Some(port) = std::str::from_utf8(&line)
+            .ok()
+            .and_then(|line| {
+                line.trim_end_matches(['\r', '\n'])
+                    .strip_prefix("AXIOM_READY ")
+            })
+            .and_then(|port| port.parse::<u16>().ok())
+            .filter(|port| *port != 0)
+        {
+            if let Some(tx) = ready.take() {
+                let _ = tx.send(port);
+            }
+        }
+    }
 }
 
 fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
@@ -59,7 +114,8 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     )))?;
     let log = OpenOptions::new()
         .create(true)
-        .append(true)
+        .write(true)
+        .truncate(false)
         .open(data.join("desktop-host.log"))?;
     let config_bytes = fs::read(&config)?;
     let settings: serde_json::Value = serde_json::from_slice(
@@ -89,25 +145,16 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .env("PATH", path)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::from(log.try_clone()?))
+        .stderr(Stdio::piped())
         .creation_flags(0x08000000)
         .spawn()?;
     let stdout = child.stdout.take().expect("piped stdout");
+    let stderr = child.stderr.take().expect("piped stderr");
+    let log = Arc::new(Mutex::new(CappedLog(log)));
+    let stderr_log = Arc::clone(&log);
     let (tx, rx) = mpsc::channel();
-    thread::spawn(move || {
-        use std::io::Write;
-        let mut log = log;
-        for line in BufReader::new(stdout).lines() {
-            let Ok(line) = line else { break };
-            let _ = writeln!(log, "{line}");
-            if let Some(port) = line
-                .strip_prefix("AXIOM_READY ")
-                .and_then(|p| p.parse::<u16>().ok())
-            {
-                let _ = tx.send(port);
-            }
-        }
-    });
+    thread::spawn(move || drain_host_output(stderr, stderr_log, None));
+    thread::spawn(move || drain_host_output(stdout, log, Some(tx)));
     let port = match rx.recv_timeout(Duration::from_secs(20)) {
         Ok(port) if port != 0 => port,
         _ => {
@@ -151,4 +198,47 @@ fn main() {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn desktop_log_rolls_over_on_windows() {
+        let path = std::env::temp_dir().join(format!("axiom-log-test-{}", std::process::id()));
+        let file = OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&path)
+            .unwrap();
+        let mut log = CappedLog(file);
+        log.write_all(&vec![b'x'; 8 * 1024 * 1024]).unwrap();
+        log.write_all(b"new").unwrap();
+        drop(log);
+        assert_eq!(fs::read(&path).unwrap(), b"new");
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn concurrent_log_records_preserve_stdout_readiness() {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let stderr_log = Arc::clone(&log);
+        let (tx, rx) = mpsc::channel();
+        let stderr = thread::spawn(move || {
+            drain_host_output(&b"AXIOM_READY 1\nprivate host log\n"[..], stderr_log, None);
+        });
+        drain_host_output(
+            &b"\xff\nAXIOM_READY 4567\nAXIOM_READY 2"[..],
+            Arc::clone(&log),
+            Some(tx),
+        );
+        stderr.join().unwrap();
+        assert_eq!(rx.try_iter().collect::<Vec<_>>(), vec![4567]);
+        let log = log.lock().unwrap();
+        assert_eq!(log.split(|b| *b == b'\n').count(), 6);
+        assert!(log
+            .split(|b| *b == b'\n')
+            .any(|line| line == b"AXIOM_READY 4567"));
+    }
 }

@@ -59,8 +59,10 @@ header{display:flex;align-items:center;justify-content:space-between;gap:8px;pad
 .header-title span{font-size:12px;color:var(--muted);}
 .controls{display:flex;align-items:center;gap:6px;flex:none;}
 .controls button{border:0;padding:6px 8px;color:var(--muted);}
-#status{font-size:12px;color:var(--muted);white-space:nowrap;}
+#status{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);white-space:nowrap;}
 #transcript{flex:1;min-height:0;overflow-y:auto;overflow-x:clip;padding:16px max(24px,calc((100% - 748px)/2));overscroll-behavior-y:contain;}
+.transcript-jump{position:relative;height:0;z-index:2;}
+.transcript-jump button{position:absolute;bottom:10px;right:max(20px,calc((100% - 748px)/2));padding:4px 12px;background:var(--surface);box-shadow:var(--dsw-elevation-menu);}
 #transcript article{white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 20px;line-height:1.72;}
 #transcript article b{font-size:12px;color:var(--muted);font-weight:500;display:block;margin-bottom:5px;}
 #transcript article.user{width:fit-content;max-width:82%;margin-left:auto;padding:10px 16px;background:var(--dsw-specific-bubble);border-radius:var(--dsw-radius-lg);}
@@ -173,7 +175,30 @@ body.sidebar-collapsed #sidebar-settings span,body.sidebar-collapsed #sidebar-pa
 .settings-sections{display:flex;flex-wrap:wrap;gap:4px;padding:8px 12px;border-bottom:.5px solid var(--border);}
 .settings-section{padding:12px;min-width:0;}
 .settings-section[hidden]{display:none;}
+.builtin-prompt-actions{display:flex;flex-wrap:wrap;gap:8px;}
+.pi-session-history{list-style:none;margin:0;padding:0;max-height:45vh;overflow:auto;}
+.pi-session-history li{display:grid;gap:2px;padding-block:6px;overflow-wrap:anywhere;border-bottom:.5px solid var(--border);}
+.pi-session-history li small{color:var(--muted);}
+.pi-session-history li[aria-current="step"]{color:var(--accent);}
+.settings-section textarea{width:100%;resize:vertical;}
 
 .composer form{position:relative;}
 #composer-menu{position:absolute;inset:0;pointer-events:none;}
 #composer-menu>div{pointer-events:auto;}
+
+#root{display:contents;}
+.sidebar-backdrop{display:none;}
+@media(max-width:767px){
+  .sidebar-backdrop{display:block;position:fixed;inset:0;z-index:49;border:0;border-radius:0;background:rgb(0 0 0 / .25);}
+}
+
+.plan-dock{--dsh-composer-side-clearance:0px;--dsh-composer-dock-inset:0px;--dsh-composer-card-max-width:764px;display:flex;flex-direction:column;gap:6px;margin-bottom:6px;}
+#transcript article.user{padding:0;background:transparent;}
+#trace table button{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:none;}
+#trace table td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+.draft-editor{position:relative;min-width:0;}.axiom-lexical-input{min-height:76px;max-height:220px;padding:6px;overflow:auto;outline:none;white-space:pre-wrap;overflow-wrap:anywhere;}.axiom-lexical-input p{margin:0;}.axiom-lexical-input[data-empty]::before{content:attr(data-placeholder);color:var(--dsw-alias-label-tertiary);position:absolute;pointer-events:none;}
+
+.draft-editor { border: 0; padding: 0; margin: 0; min-width: 0; }
+
+.quote-message{font-size:12px;color:var(--muted);padding:3px 8px;opacity:0;}article:hover .quote-message,.quote-message:focus-visible{opacity:1;}

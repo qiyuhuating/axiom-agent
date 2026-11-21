@@ -10,6 +10,12 @@ export async function createRuntimeContext(jobs, terminal) {
     constructor(ctx) {
       super(ctx, "axiomJobs");
     }
+    page(cursor, limit, session) {
+      return jobs.jobPage(cursor, limit, session);
+    }
+    detail(id) {
+      return jobs.jobDetail(id);
+    }
     state() {
       return jobs.jobState();
     }

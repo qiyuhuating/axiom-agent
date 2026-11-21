@@ -12,3 +12,6 @@ export function classifyFileType(name:string){
  if(['md','txt','log','pdf','docx'].includes(ext))return 'text';return 'other';
 }
 export function FileTypeIcon({kind,...props}:{kind:string,size?:number,className?:string}){const Icon=kind==='image'?FileImage:kind==='code'?FileCode:kind==='text'?FileText:File;return <Icon {...props} strokeWidth={1.7}/>;}
+
+export {StateDot,type StateDotState} from './StateDot.tsx';
+export {ListChecks as IconChecklistOutlineRegular,ChevronDown as IconChevronDownOutlineRegular,ChevronUp as IconChevronUpOutlineRegular} from 'lucide-react';

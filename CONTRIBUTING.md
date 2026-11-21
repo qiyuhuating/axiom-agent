@@ -12,4 +12,6 @@ Never commit credentials, session logs, local workspace contents, provider confi
 
 By submitting changes to this project, you agree that your contributions are licensed under the project's MIT license, while preserving any applicable upstream notices.
 
+Run `npm run test:coverage` for the Node coverage table. It covers the loaded files under `src/`. The isolated provider fixture exercises Pi streaming, a filesystem read and session persistence. Run `cargo test --locked --manifest-path daemon/Cargo.toml` for the native history contract. For changes to ports, authentication, terminal forwarding or packaging, also exercise the staged Windows runtime and gateway against private fixture directories. When a configuration or permission default changes, update the matching upgrade and recovery instructions in README.md and SECURITY.md in the same change.
+
 Run `npm run format` before committing changes to src/ or ui/. Biome checks owned source only; do not reformat vendored upstream code. Integration tests launch isolated Pi and Cordis runtimes without calling a paid model.

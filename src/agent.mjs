@@ -2,12 +2,16 @@ import { unlink } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { config, root } from "./config.mjs";
+import { projectHarness, projectSessionHistory } from "./harness-state.mjs";
+import { decodeRequest, validateAnswer } from "./interaction-protocol.mjs";
 import { PiClient } from "./pi-client.mjs";
+import { builtinPromptPath } from "./prompt-store.mjs";
 
 export class Agent {
   #client;
   #listeners = new Set();
   #busy = false;
+  #retrying = false;
   #startup;
   #sessionId;
   #recovering;
@@ -17,6 +21,7 @@ export class Agent {
     this.#makeClient = makeClient;
   }
   #changing = false;
+  #sessionRevision = 0;
   #dialogs = new Map();
   get busy() {
     return this.#busy;
@@ -44,11 +49,22 @@ export class Agent {
         resolve(root, "src/approval.ts"),
         "--extension",
         resolve(root, "src/providers.ts"),
+        "--extension",
+        resolve(root, "src/builtin-prompt.ts"),
+        "--extension",
+        resolve(root, "src/deliverables.ts"),
+        "--extension",
+        resolve(root, "src/interactions.ts"),
+        "--extension",
+        resolve(root, "src/goal.ts"),
+        "--extension",
+        resolve(root, "src/file-observation.ts"),
       ],
       env: {
         AXIOM_MAX_OUTPUT_TOKENS: String(config.maxOutputTokens ?? ""),
         AXIOM_PROVIDER_FILE: resolve(config.sessionDir, "axiom-providers.json"),
         AXIOM_PERMISSION_FILE: resolve(config.sessionDir, "permission.json"),
+        AXIOM_BUILTIN_PROMPT_FILE: builtinPromptPath,
       },
     });
     this.#client = client;
@@ -71,6 +87,8 @@ export class Agent {
         this.#dialogs.clear();
       }
       if (event.type === "agent_start") this.#busy = true;
+      if (event.type === "auto_retry_start") this.#retrying = true;
+      if (event.type === "auto_retry_end" || event.type === "agent_settled") this.#retrying = false;
       if (event.type === "agent_settled") this.#busy = false;
       this.#emit({ ...event, busy: this.#busy });
     });
@@ -97,6 +115,7 @@ export class Agent {
     this.#client = undefined;
     this.#startup = undefined;
     this.#busy = false;
+    this.#retrying = false;
     this.#recovering = client
       .stop()
       .catch((e) => console.error("Pi cleanup:", e.message))
@@ -116,7 +135,9 @@ export class Agent {
   }
   async state() {
     await this.start();
-    const state = await this.#rememberSession(this.#client);
+    return this.#projectState(await this.#rememberSession(this.#client));
+  }
+  #projectState(state) {
     return {
       model: state.model && {
         provider: state.model.provider,
@@ -124,9 +145,41 @@ export class Agent {
       },
       thinkingLevel: state.thinkingLevel,
       busy: this.#busy,
+      retrying: this.#retrying,
       sessionId: state.sessionId,
       workspace: config.workspace,
     };
+  }
+  async snapshot() {
+    await this.start();
+    const client = this.#client;
+    const revision = this.#sessionRevision;
+    if (revision % 2) throw Error("Session change in progress");
+    const [state, messages, tree, sessions] = await Promise.all([
+      client.getState(),
+      client.getMessages(),
+      client.getTree(),
+      this.sessions(),
+    ]);
+    if (client !== this.#client || revision !== this.#sessionRevision)
+      throw Error("Session changed while reading its snapshot");
+    this.#sessionId = state.sessionId;
+    return {
+      state: this.#projectState(state),
+      messages: messages.filter((m) => m.role !== "system"),
+      sessions,
+      dialogs: this.pendingDialogs(),
+      harness: { sessionId: state.sessionId, ...projectHarness(tree) },
+    };
+  }
+  async harnessState() {
+    await this.start();
+    const client = this.#client;
+    const state = await client.getState();
+    const tree = await client.getTree();
+    if (client !== this.#client || state.sessionId !== (await client.getState()).sessionId)
+      throw Error("Session changed while reading Harness state");
+    return { sessionId: state.sessionId, ...projectHarness(tree) };
   }
   async messages() {
     await this.start();
@@ -149,9 +202,14 @@ export class Agent {
       modified,
     }));
   }
-  async prompt(message, images) {
+  #checkPromptSession(sessionId) {
+    if (sessionId !== undefined && sessionId !== this.#sessionId)
+      throw Error("The active session changed. Check the draft before sending.");
+  }
+  async prompt(message, images, sessionId) {
     await this.start();
     if (this.#busy || this.#changing) throw new Error("Agent is running or changing session.");
+    this.#checkPromptSession(sessionId);
     this.#busy = true;
     this.#emit({ type: "run_status", busy: true });
     try {
@@ -167,28 +225,47 @@ export class Agent {
       throw error;
     }
   }
-  async steer(message, images) {
+  async steer(message, images, sessionId) {
     await this.start();
     if (this.#changing) throw new Error("Session change in progress.");
+    this.#checkPromptSession(sessionId);
     return this.#client.steer(message, images);
   }
-  async followUp(message, images) {
+  async followUp(message, images, sessionId) {
     await this.start();
     if (this.#changing) throw Error("Session change in progress");
+    this.#checkPromptSession(sessionId);
     return this.#client.followUp(message, images);
   }
   async clearQueue() {
     await this.start();
     return this.#client.clearQueue();
   }
-  async sessionDetails() {
+  async sessionDetails(view) {
     await this.start();
+    if (view === "stats") return { stats: await this.#client.getSessionStats() };
+    if (view === "forks") return { forks: await this.#client.getForkMessages() };
+    if (view === "history") return { history: projectSessionHistory(await this.#client.getTree()) };
+    if (view === "last-reply") return { text: (await this.#client.getLastAssistantText()) ?? null };
     const [stats, forks, tree] = await Promise.all([
       this.#client.getSessionStats(),
       this.#client.getForkMessages(),
       this.#client.getTree(),
     ]);
     return { stats, forks, tree };
+  }
+  async exportHtml(sessionId, outputPath) {
+    await this.start();
+    return this.exclusiveResourceChange(async () => {
+      if ((await this.#client.getState()).sessionId !== sessionId)
+        throw Error("The active session changed. Reopen the session panel to export it.");
+      await this.#client.exportHtml(outputPath);
+    });
+  }
+  async abortRetry() {
+    await this.start();
+    if (!this.#retrying) throw Error("Pi is not retrying.");
+    return this.#client.abortRetry();
   }
   async abort() {
     await this.start();
@@ -197,11 +274,22 @@ export class Agent {
     this.#busy = false;
     this.#emit({ type: "run_status", busy: false });
   }
+  async exclusiveResourceChange(operation) {
+    if (this.#busy || this.#changing) throw Error("Stop the agent before changing resources");
+    this.#changing = true;
+    try {
+      return await operation();
+    } finally {
+      this.#changing = false;
+      this.#emit({ type: "state_changed", busy: this.#busy });
+    }
+  }
   async change(action, value) {
     await this.start();
     if (this.#busy || this.#changing)
       throw new Error("Stop current run or wait for the session change.");
     this.#changing = true;
+    this.#sessionRevision++;
     try {
       if (action === "new")
         return await this.#sessionChange(this.#client, this.#client.newSession());
@@ -237,7 +325,7 @@ export class Agent {
         return await this.#sessionChange(this.#client, this.#client.fork(value));
       }
       if (action === "compact")
-        return this.#client.compact(typeof value === "string" ? value : undefined);
+        return await this.#client.compact(typeof value === "string" ? value : undefined);
       if (action === "auto-compaction" || action === "auto-retry") {
         if (typeof value !== "boolean") throw Error("Boolean required");
         await (action === "auto-compaction"
@@ -254,8 +342,18 @@ export class Agent {
       }
       if (action === "model") return await this.#client.setModel(value.provider, value.id);
       if (action === "thinking") return await this.#client.setThinkingLevel(value);
+      if (action === "cycle-model") {
+        if (!(await this.#client.cycleModel()))
+          throw Error("No alternative Pi model is available.");
+        return { ok: true };
+      }
+      if (action === "cycle-thinking") {
+        await this.#client.cycleThinkingLevel();
+        return { ok: true };
+      }
       throw new Error("Unknown action");
     } finally {
+      this.#sessionRevision++;
       this.#changing = false;
       if (
         [
@@ -264,6 +362,8 @@ export class Agent {
           "delete",
           "model",
           "thinking",
+          "cycle-model",
+          "cycle-thinking",
           "rename",
           "clone",
           "fork",
@@ -288,6 +388,8 @@ export class Agent {
     const dialog = this.#dialogs.get(id);
     if (!dialog) throw Error("Interaction expired or already answered");
     if (!cancelled) {
+      const request = decodeRequest(dialog);
+      if (request) validateAnswer(request, value);
       if (dialog.method === "confirm" && typeof confirmed !== "boolean")
         throw Error("Confirmation required");
       if (dialog.method === "select" && !dialog.options?.includes(value))

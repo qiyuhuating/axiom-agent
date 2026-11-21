@@ -1,8 +1,13 @@
-import { readFile } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { createServer } from "node:http";
-import { resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { pipeline } from "node:stream/promises";
 import { Agent } from "./agent.mjs";
 import { config, root } from "./config.mjs";
+import { body, HttpError, healthStats, json, requestError, requestUrl } from "./http.mjs";
+import { builtinPrompt, setBuiltinPrompt } from "./prompt-store.mjs";
 import { ensureRuntime, proxyRuntime } from "./runtime-client.mjs";
 import {
   inventory,
@@ -24,31 +29,9 @@ const agent = new Agent();
 const assets = new Map([
   ["/", ["index.html", "text/html"]],
   ["/app.js", ["app.js", "text/javascript"]],
+  ["/app.css", ["app.css", "text/css"]],
   ["/style.css", ["style.css", "text/css"]],
-  ["/markdown.js", ["markdown.js", "text/javascript"]],
-  ["/dsh-ui.js", ["dsh-ui.js", "text/javascript"]],
-  ["/dsh-ui.css", ["dsh-ui.css", "text/css"]],
-  ["/workbench.js", ["workbench.js", "text/javascript"]],
-  ["/workbench.css", ["workbench.css", "text/css"]],
 ]);
-function json(res, data, status = 200) {
-  res.writeHead(status, {
-    "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store",
-  });
-  res.end(JSON.stringify(data));
-}
-async function body(req) {
-  let result = "",
-    bytes = 0;
-  req.setEncoding("utf8");
-  for await (const chunk of req) {
-    bytes += Buffer.byteLength(chunk);
-    if (bytes > 96 * 1024 * 1024) throw new Error("Request too large");
-    result += chunk;
-  }
-  return JSON.parse(result);
-}
 const server = createServer(async (req, res) => {
   const host = req.headers.host;
   if (gatewaySecret && req.headers["x-axiom-gateway-secret"] !== gatewaySecret)
@@ -61,12 +44,15 @@ const server = createServer(async (req, res) => {
     "Content-Security-Policy",
     "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-src http: https: blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
   );
-  const url = new URL(req.url, "http://localhost");
-  const path = url.pathname;
   try {
+    const url = requestUrl(req);
+    const path = url.pathname;
     if (req.method === "GET") {
       if (/^\/chunks\/[A-Za-z0-9_-]+\.(js|css)$/.test(path)) {
-        const data = await readFile(resolve(root, "public", path.slice(1)));
+        const data = await readFile(resolve(root, "public", path.slice(1))).catch((error) => {
+          if (error.code === "ENOENT") throw new HttpError(404, "Asset not found");
+          throw error;
+        });
         res.writeHead(200, {
           "Content-Type": path.endsWith(".css")
             ? "text/css; charset=utf-8"
@@ -77,14 +63,17 @@ const server = createServer(async (req, res) => {
       }
       if (assets.has(path)) {
         const [file, type] = assets.get(path);
+        const data = await readFile(resolve(root, "public", file));
         res.writeHead(200, {
           "Content-Type": type + "; charset=utf-8",
           "Cache-Control": "no-cache",
         });
-        return res.end(await readFile(resolve(root, "public", file)));
+        return res.end(data);
       }
-      if (path === "/api/health") return json(res, { ok: true });
+      if (path === "/api/health") return json(res, { ok: true, ...healthStats() });
+      if (path === "/api/snapshot") return json(res, await agent.snapshot());
       if (path === "/api/state") return json(res, await agent.state());
+      if (path === "/api/harness") return json(res, await agent.harnessState());
       if (path === "/api/messages") return json(res, await agent.messages());
       if (path === "/api/models") return json(res, await agent.models());
       if (path === "/api/levels") return json(res, await agent.levels());
@@ -94,7 +83,8 @@ const server = createServer(async (req, res) => {
       if (path === "/api/file")
         return json(res, await openFile(url.searchParams.get("path") ?? ""));
       if (path === "/api/diff") return json(res, await gitDiff());
-      if (path === "/api/session-details") return json(res, await agent.sessionDetails());
+      if (path === "/api/session-details")
+        return json(res, await agent.sessionDetails(url.searchParams.get("view")));
       if (path === "/api/commands") return json(res, await agent.commands());
       if (path === "/api/dialogs") return json(res, agent.pendingDialogs());
       if (path === "/api/settings")
@@ -105,6 +95,7 @@ const server = createServer(async (req, res) => {
           workspace: config.workspace,
         });
       if (path === "/api/providers") return json(res, await providers());
+      if (path === "/api/builtin-prompt") return json(res, await builtinPrompt());
       if (path === "/api/resources") return json(res, await inventory());
       if (
         ["/api/jobs", "/api/terminals", "/api/terminal/events", "/api/runtime-health"].includes(
@@ -146,20 +137,44 @@ const server = createServer(async (req, res) => {
     if (req.method === "POST" && path.startsWith("/api/")) {
       if (req.headers.origin !== "http://" + host || req.headers["x-axiom-client"] !== "1")
         return json(res, { error: "Invalid origin" }, 403);
-      if (path === "/api/file-save") return json(res, await saveFile(await body(req)));
-      if (path === "/api/upload") return json(res, await upload(await body(req)));
+      if (path === "/api/file-save")
+        return json(res, await saveFile(await body(req, 7 * 1024 * 1024)));
+      if (path === "/api/upload") return json(res, await upload(await body(req, 12 * 1024 * 1024)));
       if (path === "/api/ui-response") return json(res, await agent.respond(await body(req)));
+      if (path === "/api/session-export") {
+        const { sessionId } = await body(req, 4096);
+        if (typeof sessionId !== "string" || !sessionId) throw Error("Session ID required");
+        const directory = await mkdtemp(join(tmpdir(), "axiom-export-"));
+        const file = join(directory, "pi-session.html");
+        try {
+          await agent.exportHtml(sessionId, file);
+          res.writeHead(200, {
+            "Cache-Control": "no-store",
+            "Content-Type": "application/octet-stream",
+            "Content-Disposition": 'attachment; filename="pi-session.html"',
+            "Content-Length": (await stat(file)).size,
+          });
+          await pipeline(createReadStream(file), res);
+        } finally {
+          await rm(directory, { recursive: true, force: true });
+        }
+        return;
+      }
+      if (path === "/api/builtin-prompt") {
+        const value = await body(req, 160 * 1024);
+        return json(res, await agent.exclusiveResourceChange(() => setBuiltinPrompt(value)));
+      }
       if (path === "/api/permission") {
-        if (agent.busy) throw Error("Stop the agent before changing permissions");
-        return json(res, await setPermission((await body(req)).mode));
+        const { mode } = await body(req);
+        return json(res, await agent.exclusiveResourceChange(() => setPermission(mode)));
       }
       if (path === "/api/provider-action") {
-        if (agent.busy) throw Error("Stop the agent before changing providers");
-        return json(res, await providerAction(await body(req)));
+        const value = await body(req);
+        return json(res, await agent.exclusiveResourceChange(() => providerAction(value)));
       }
       if (path === "/api/resource-action") {
-        if (agent.busy) throw Error("Stop the agent before changing resources");
-        return json(res, await resourceAction(await body(req)));
+        const value = await body(req);
+        return json(res, await agent.exclusiveResourceChange(() => resourceAction(value)));
       }
       if (["/api/terminal-action", "/api/job-action"].includes(path))
         return await proxyRuntime(req, res, await body(req));
@@ -167,7 +182,7 @@ const server = createServer(async (req, res) => {
     if (req.method === "POST" && path === "/api/action") {
       if (req.headers.origin !== "http://" + host || req.headers["x-axiom-client"] !== "1")
         return json(res, { error: "Invalid origin" }, 403);
-      const { action, value, images } = await body(req);
+      const { action, value, images, sessionId } = await body(req, 96 * 1024 * 1024);
       if (action === "prompt" || action === "steer" || action === "followUp") {
         if (typeof value !== "string" || !value.trim())
           return json(res, { error: "Empty input" }, 400);
@@ -177,16 +192,20 @@ const server = createServer(async (req, res) => {
             images.length > 8 ||
             images.some(
               (i) =>
-                i.type !== "image" ||
+                i?.type !== "image" ||
                 !["image/png", "image/jpeg", "image/webp", "image/gif"].includes(i.mimeType) ||
                 typeof i.data !== "string" ||
                 i.data.length > 12 * 1024 * 1024,
             ))
         )
           throw Error("Invalid image attachments");
-        return json(res, await agent[action](value, images));
+        return json(res, await agent[action](value, images, sessionId));
       }
       if (action === "clear-queue") return json(res, await agent.clearQueue());
+      if (action === "abort-retry") {
+        await agent.abortRetry();
+        return json(res, { ok: true });
+      }
       if (action === "abort") {
         await agent.abort();
         return json(res, { ok: true });
@@ -195,8 +214,7 @@ const server = createServer(async (req, res) => {
     }
     return json(res, { error: "Not found" }, 404);
   } catch (error) {
-    if (!res.headersSent) json(res, { error: error.message }, 400);
-    else res.destroy();
+    requestError("workbench", req, res, error);
   }
 });
 server.listen(config.port, "127.0.0.1", () => {

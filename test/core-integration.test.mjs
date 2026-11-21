@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { request } from "node:http";
 import { tmpdir } from "node:os";
@@ -9,6 +9,7 @@ import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 
 async function freePort() {
   const server = createServer();
@@ -54,6 +55,46 @@ test("HTTP host: authenticated runtime, restart, extension confirmation and stal
   const post=(path,body,authorized=true)=>fetch(base+"/api/"+path,{method:"POST",headers:{"Content-Type":"application/json",...(authorized?{Origin:base,"X-Axiom-Client":"1"}:{Origin:"https://example.invalid"})},body:JSON.stringify(body),signal:AbortSignal.timeout(35000)});
   try {
     await until(()=>base,20000);
+    token=await readFile(join(f.sessionDir,"runtime.token"),"utf8");
+    assert.equal((await get("settings")).permission,"ask");
+    const bad = await post("permission",null);
+    assert.equal(bad.status,400);
+    const requestId = bad.headers.get("x-request-id");
+    assert.ok(requestId);
+    assert.equal((await bad.json()).requestId,requestId);
+    await until(()=>stderr.includes(requestId));
+    assert.ok((await get("health")).httpErrors.client >= 1);
+    const policyFile = join(f.sessionDir,"permission.json");
+    await writeFile(policyFile, "fixture-policy-private-text");
+    const damaged = await fetch(base+"/api/settings");
+    assert.equal(damaged.status,500);
+    const failure = await damaged.json();
+    assert.equal(failure.error,"Internal service error");
+    assert.equal(failure.requestId,damaged.headers.get("x-request-id"));
+    await until(()=>stderr.includes(failure.requestId));
+    assert.ok(!stderr.includes("fixture-policy-private-text"));
+    assert.ok((await get("health")).httpErrors.server >= 1);
+    assert.ok((await post("permission",{mode:"ask"})).ok);
+    assert.equal((await get("settings")).permission,"ask");
+    const stream = new ReadableStream({start(controller) {
+      controller.enqueue(new TextEncoder().encode(JSON.stringify({text:"测".repeat(60000)})));
+      controller.close();
+    }});
+    const streamed = await fetch(base+"/api/builtin-prompt",{method:"POST",duplex:"half",body:stream,
+      headers:{Origin:base,"X-Axiom-Client":"1","Content-Type":"application/json"}});
+    assert.equal(streamed.status,413);
+    assert.equal((await post("provider-action",{operation:"upsert",name:"axiom-custom-test",envKey:"TEST_KEY",baseUrl:"http://example.invalid"})).status,400);
+    const tooLarge = await post("permission",{mode:"x".repeat(2*1024*1024)});
+    assert.equal(tooLarge.status,413);
+    const initialPrompt = await get("builtin-prompt");
+    assert.equal(initialPrompt.text, initialPrompt.defaultText);
+    const promptEdit = {text:"Keep the fixture responses brief.",expected:initialPrompt.text};
+    assert.equal((await post("builtin-prompt",promptEdit,false)).status,403);
+    assert.equal((await post("builtin-prompt",promptEdit)).status,200);
+    assert.equal((await get("builtin-prompt")).text,promptEdit.text);
+    assert.equal((await post("builtin-prompt",{...promptEdit,text:"stale edit"})).status,400);
+    assert.equal((await post("builtin-prompt",{text:"",expected:promptEdit.text})).status,200);
+    assert.equal((await get("builtin-prompt")).text,"");
     if(gateway){
       const privatePort=await until(()=>/Axiom Agent http:\/\/127\.0\.0\.1:(\d+)/.exec(stderr)?.[1]);
       assert.notEqual(Number(privatePort),Number(new URL(base).port));
@@ -63,9 +104,12 @@ test("HTTP host: authenticated runtime, restart, extension confirmation and stal
       assert.equal(invalidHost,403);
       const asset=await fetch(base+"/app.js");assert.ok(asset.ok);assert.match(await asset.text(),/EventSource/);
     }
-    token=await readFile(join(f.sessionDir,"runtime.token"),"utf8");
     const first=await get("runtime-health");
     assert.equal(first.ok,true);
+    assert.equal(first.workspace,f.workspace);
+    assert.equal(first.sessionDir,f.sessionDir);
+    assert.equal((await runtimeRequest("/api/job-action",{method:"POST",body:"null"})).status,400);
+    assert.equal((await fetch(runtime+"/api/jobs",{headers:{Authorization:token}})).status,403);
     for(const headers of [{},{Authorization:"Bearer wrong"}]){
       const res=await fetch(runtime+"/api/jobs",{headers,signal:AbortSignal.timeout(5000)});
       assert.equal(res.status,403);
@@ -110,6 +154,65 @@ test("HTTP host: authenticated runtime, restart, extension confirmation and stal
       await until(()=>events.some(e=>e.type==="extension_ui_request"&&e.method==="notify"&&e.message===expected));
       assert.deepEqual(await get("dialogs"),[]);
     }
+    assert.equal((await get("harness")).planMode,false);
+    const stalePrompt = await post("action",{action:"prompt",value:"/axiom-plan on",sessionId:"stale-session"});
+    assert.equal(stalePrompt.status,400);
+    assert.match((await stalePrompt.json()).error,/active session changed/);
+    assert.ok((await post("action",{action:"prompt",value:"/axiom-plan on"})).ok);
+    assert.equal((await get("harness")).planMode,true);
+    const snapshot = await get("snapshot");
+    assert.equal(snapshot.state.sessionId,snapshot.harness.sessionId);
+    assert.equal(snapshot.harness.planMode,true);
+    assert.deepEqual(snapshot.dialogs,[]);
+    assert.ok((await post("action",{action:"prompt",value:"/axiom-plan off"})).ok);
+    assert.equal((await get("harness")).planMode,false);
+    const piDir=join(f.workspace,".pi");
+    await mkdir(piDir,{recursive:true});
+    const source="npm:axiom-fixture-not-installed";
+    const settingsPath=join(piDir,"settings.json");
+    const mcpPath=join(piDir,"mcp.json");
+    const advanced={source:"npm:advanced-fixture",skills:["selected"]};
+    await writeFile(settingsPath,JSON.stringify({packages:[source,advanced]}));
+    await writeFile(mcpPath,JSON.stringify({mcpServers:{fixture:{url:"https://example.invalid/mcp"}}}));
+    const resource=async body=>{const res=await post("resource-action",body);assert.ok(res.ok,await res.clone().text());};
+    await resource({operation:"package-disable",source});
+    assert.equal(JSON.parse(await readFile(settingsPath,"utf8")).packages[0].autoload,false);
+    assert.equal((await post("resource-action",{operation:"package-disable",source:advanced.source})).status,400);
+    await resource({operation:"package-enable",source});
+    assert.deepEqual(JSON.parse(await readFile(settingsPath,"utf8")).packages,[source,advanced]);
+    await resource({operation:"mcp-toggle",name:"fixture"});
+    assert.equal(JSON.parse(await readFile(mcpPath,"utf8")).mcpServers.fixture.enabled,false);
+    await resource({operation:"mcp-toggle",name:"fixture"});
+    assert.equal(JSON.parse(await readFile(mcpPath,"utf8")).mcpServers.fixture.enabled,true);
+    const session = SessionManager.create(f.workspace, f.sessionDir);
+    const userEntry = session.appendMessage({role:"user",content:"Pi export fixture",timestamp:Date.now()});
+    const branchLeaf = session.appendMessage({
+      role:"assistant",content:[{type:"text",text:"Native Pi fixture reply"}],timestamp:Date.now(),
+      api:"openai-completions",provider:"fixture",model:"fixture",stopReason:"stop",
+      usage:{input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}},
+    });
+    session.branch(userEntry);
+    const leafId = session.appendMessage({role:"user",content:"Active branch",timestamp:Date.now()});
+    const sessionId = session.getSessionId();
+    assert.ok((await post("action",{action:"switch",value:sessionId})).ok);
+    const {history} = await get("session-details?view=history");
+    assert.equal(history.rows.find(row=>row.id===leafId)?.active,true,JSON.stringify(history));
+    assert.equal(history.rows.find(row=>row.id===userEntry).active,true);
+    assert.equal(history.rows.find(row=>row.id===branchLeaf).active,false);
+    assert.equal((await get("session-details?view=last-reply")).text,null);
+    assert.equal((await post("session-export",{sessionId},false)).status,403);
+    assert.equal((await post("session-export",{sessionId:"different"})).status,400);
+    const exported = await post("session-export",{sessionId});
+    assert.ok(exported.ok,await exported.clone().text());
+    assert.equal(exported.headers.get("content-disposition"),'attachment; filename="pi-session.html"');
+    assert.match(await exported.text(), /<title>Session Export<\/title>/);
+    assert.ok((await post("action",{action:"clear-queue"})).ok);
+    assert.equal((await post("action",{action:"abort-retry"})).status,400);
+    assert.ok((await post("action",{action:"cycle-thinking"})).ok);
+    const fork = await post("action",{action:"fork",value:leafId});
+    assert.ok(fork.ok,await fork.clone().text());
+    assert.equal((await fork.json()).text,"Active branch");
+    assert.notEqual((await get("state")).sessionId,sessionId);
     sse.abort();await eventTask;
   }finally{
     sse?.abort();

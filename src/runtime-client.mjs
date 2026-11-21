@@ -1,30 +1,53 @@
-import { resolve } from "node:path";
+import { relative, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { config, root } from "./config.mjs";
+import { HttpError } from "./http.mjs";
 import { startDetachedRuntime } from "./platform/index.mjs";
 import { runtimeToken, runtimeUrl } from "./runtime-auth.mjs";
 
 const auth = { Authorization: "Bearer " + runtimeToken };
-async function health() {
-  let info;
+async function probe() {
+  let response;
   try {
-    const r = await fetch(runtimeUrl + "/api/runtime-health", {
+    response = await fetch(runtimeUrl + "/api/runtime-health", {
       headers: auth,
+      redirect: "error",
       signal: AbortSignal.timeout(1000),
     });
-    if (!r.ok) return false;
-    info = await r.json();
-  } catch {
-    return false;
+  } catch (error) {
+    if (error.cause?.code === "ECONNREFUSED") return "absent";
+    if (error.name === "TimeoutError") return "initializing";
+    throw new HttpError(503, "Runtime health check failed; inspect runtime.log");
   }
-  if (!info.ok || info.protocol !== 1) return false;
-  // Older runtimes predate Rust PTY and therefore imply the Node backend.
-  const activeBackend = info.terminalBackend ?? "node";
-  if (activeBackend !== config.terminalBackend) {
-    throw Error(
+  if (response.status === 503) {
+    await response.body?.cancel();
+    return "initializing";
+  }
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new HttpError(503, "Runtime port is occupied or its credential does not match");
+  }
+  const info = await response.json().catch(() => null);
+  if (
+    info?.ok !== true ||
+    info.protocol !== 1 ||
+    typeof info.workspace !== "string" ||
+    relative(config.workspace, info.workspace) !== "" ||
+    typeof info.sessionDir !== "string" ||
+    relative(config.sessionDir, info.sessionDir) !== "" ||
+    !["node", "rust"].includes(info.terminalBackend)
+  ) {
+    throw new HttpError(
+      503,
+      "Running runtime identity or configuration differs. Finish active work and stop the previous runtime before restarting.",
+    );
+  }
+  if (info.terminalBackend !== config.terminalBackend) {
+    throw new HttpError(
+      503,
       "Running terminal backend is " +
-        activeBackend +
+        info.terminalBackend +
         "; configured backend is " +
         config.terminalBackend +
         ". Close active work and stop the existing runtime before switching.",
@@ -32,26 +55,30 @@ async function health() {
   }
   return info;
 }
-let starting;
-export async function ensureRuntime() {
-  const current = await health();
-  if (current) return current;
-  if (!starting)
-    starting = (async () => {
+async function connect() {
+  let launched = false;
+  const deadline = Date.now() + 12000;
+  do {
+    const result = await probe();
+    if (typeof result === "object") return result;
+    if (result === "absent" && !launched) {
       startDetachedRuntime(root, resolve(config.sessionDir, "runtime.log"));
-      for (let i = 0; i < 40; i++) {
-        await new Promise((r) => setTimeout(r, 250));
-        const current = await health();
-        if (current) return current;
-      }
-      throw Error("Independent runtime unavailable; inspect runtime.log");
-    })().finally(() => {
-      starting = undefined;
-    });
+      launched = true;
+    }
+    await new Promise((done) => setTimeout(done, 250));
+  } while (Date.now() < deadline);
+  throw new HttpError(503, "Independent runtime unavailable; inspect runtime.log");
+}
+let starting;
+export function ensureRuntime() {
+  starting ??= connect().finally(() => {
+    starting = undefined;
+  });
   return starting;
 }
 export async function proxyRuntime(req, res, body) {
   const health = await ensureRuntime();
+  if (res.destroyed) return;
   if (req.method === "GET" && req.url === "/api/runtime-health") {
     res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
     res.end(JSON.stringify(health));
@@ -68,8 +95,18 @@ export async function proxyRuntime(req, res, body) {
         ...(body === undefined ? {} : { "Content-Type": "application/json" }),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal: abort.signal,
+      redirect: "error",
+      signal:
+        req.url.split("?")[0] === "/api/terminal/events"
+          ? abort.signal
+          : AbortSignal.any([abort.signal, AbortSignal.timeout(120000)]),
+    }).catch((error) => {
+      if (error.name === "TimeoutError")
+        throw new HttpError(504, "Runtime request timed out. Check its state before retrying.");
+      throw new HttpError(502, "Runtime connection lost. Check its state before retrying.");
     });
+    const requestId = r.headers.get("x-request-id");
+    if (requestId) res.setHeader("X-Request-Id", requestId);
     res.writeHead(r.status, {
       "Content-Type": r.headers.get("content-type") || "application/json",
       "Cache-Control": "no-store",

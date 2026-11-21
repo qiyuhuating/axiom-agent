@@ -1,6 +1,19 @@
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { layout, toggleWorkbench } from "./dsh-ui.tsx";
+import { decodeRequest } from "../src/interaction-protocol.mjs";
+import { JobDetails, TeamOverview } from "./harness-features.tsx";
 import { api, dirtyTabs, errorBox, Header, msg } from "./panel-shared.tsx";
+import {
+  appendDraft,
+  type Dialog,
+  getSnapshot,
+  loadJobs,
+  loadOptions,
+  removeDialog,
+  useProjection,
+  useProjectionField,
+} from "./projection.ts";
+import { layoutActions, useLayout } from "./shell-layout.ts";
+import { StructuredDialog } from "./structured-dialog.tsx";
 
 const Editor = React.lazy(() => import("./editor.tsx"));
 const TerminalView = React.lazy(() => import("./terminal.tsx"));
@@ -30,7 +43,6 @@ import {
   Workflow,
   X,
 } from "lucide-react";
-import { createRoot } from "react-dom/client";
 import { parseBrowserAddress } from "../vendor/dsh/browser/url.ts";
 import { DockController, DockLayout } from "../vendor/dsh/dockkit/index.ts";
 import { FileTree } from "../vendor/dsh/files/FileTree.tsx";
@@ -39,6 +51,8 @@ import { Modal } from "../vendor/dsh/primitives/Modal.tsx";
 import "@xterm/xterm/css/xterm.css";
 import "../vendor/dsh/primitives/DiffBlock.module.css";
 import "../vendor/dsh/primitives/CodeCard.module.css";
+import pluginCss from "../vendor/dsh/capabilities/PluginManagerPage.module.css";
+import questionCss from "../vendor/dsh/capabilities/QuestionComposer.module.css";
 import guideCss from "../vendor/dsh/guide/GuideBody.module.css";
 import { CompassGlyph } from "../vendor/dsh/guide/GuideTitle.tsx";
 import browserCss from "../vendor/dsh/sidebar/Browser.module.css";
@@ -102,11 +116,7 @@ const open = (kind: string, title?: string, id?: string) =>
     title: title || names[kind as keyof typeof names] || kind,
     contentId: id || (["terminal", "browser"].includes(kind) ? crypto.randomUUID() : kind),
   });
-function insert(text: string) {
-  const box = document.getElementById("prompt") as HTMLTextAreaElement;
-  box.value = (box.value ? box.value + "\n" : "") + text;
-  box.focus();
-}
+const insert = appendDraft;
 function useLoad(path: string, initial: any) {
   const [value, setValue] = useState(initial),
     [error, setError] = useState("");
@@ -464,17 +474,84 @@ function Providers() {
   );
 }
 
+function BuiltinPromptEditor() {
+  const { value, error, load, setValue, setError } = useLoad("builtin-prompt", null);
+  const [draft, setDraft] = useState<string>();
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const text = draft ?? value?.text ?? "";
+  async function save(reset = false) {
+    setSaving(true);
+    setSaved(false);
+    try {
+      const next = await api(
+        "builtin-prompt",
+        reset ? { reset: true, expected: value.text } : { text, expected: value.text },
+      );
+      setValue(next);
+      setDraft(undefined);
+      setError("");
+      setSaved(true);
+    } catch (e) {
+      setError(msg(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="wb-form settings-section">
+      {errorBox(error)}
+      <label>
+        内置提示词
+        <textarea
+          aria-label="内置提示词"
+          rows={9}
+          maxLength={value?.limit}
+          disabled={!value || saving}
+          value={text}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            setSaved(false);
+          }}
+        />
+      </label>
+      <p className="wb-muted">附加到 Pi 的系统提示词，下次运行时生效。留空可停用附加提示。</p>
+      <div className="builtin-prompt-actions">
+        <Button size="sm" disabled={!value || saving} onClick={() => void save(true)}>
+          恢复默认
+        </Button>
+        <Button size="sm" disabled={saving} onClick={() => void load()}>
+          重新读取
+        </Button>
+        <Button
+          variant="primary"
+          disabled={!value || saving || text === value.text}
+          onClick={() => void save()}
+        >
+          保存提示词
+        </Button>
+      </div>
+      {saved && <p role="status">已保存</p>}
+    </div>
+  );
+}
+
+const settingsSections = {
+  general: "通用与权限",
+  models: "模型提供商",
+  prompt: "内置提示词",
+} as const;
 function SettingsView() {
-  const { value, error, load, setError } = useLoad("settings", null),
-    models = useLoad("models", []),
-    levels = useLoad("levels", []),
-    state = useLoad("state", null);
-  const [section, setSection] = useState<"general" | "models">("general");
+  const { value, error, load, setError } = useLoad("settings", null);
+  const models = useProjectionField("models");
+  const levels = useProjectionField("levels");
+  const state = useProjectionField("state");
+  const [section, setSection] = useState<keyof typeof settingsSections>("general");
+  const [opened, setOpened] = useState({ general: true, models: false, prompt: false });
   async function update(action: string, value: unknown) {
     try {
       await api("action", { action, value });
-      await state.load();
-      await levels.load();
+      await loadOptions();
       setError("");
     } catch (e) {
       setError(msg(e));
@@ -497,32 +574,35 @@ function SettingsView() {
         </Button>
       </Header>
       <nav className="settings-sections" aria-label="设置分类">
-        {(["general", "models"] as const).map((key) => (
+        {(Object.keys(settingsSections) as (keyof typeof settingsSections)[]).map((key) => (
           <button
             type="button"
             key={key}
             className={settingsCss.navCell + (key === section ? " " + settingsCss.active : "")}
             aria-pressed={key === section}
-            onClick={() => setSection(key)}
+            onClick={() => {
+              setSection(key);
+              if (!opened[key]) setOpened({ ...opened, [key]: true });
+            }}
           >
-            {key === "general" ? "通用与权限" : "模型提供商"}
+            {settingsSections[key]}
           </button>
         ))}
       </nav>
       <div className="wb-scroll">
         <div className="wb-form settings-section" hidden={section !== "general"}>
-          {errorBox(error || models.error || state.error)}
+          {errorBox(error)}
           <label>
             模型
             <select
               aria-label="设置模型"
-              value={state.value?.model ? JSON.stringify(state.value.model) : ""}
+              value={state?.model ? JSON.stringify(state.model) : ""}
               onChange={(e) => void update("model", JSON.parse(e.target.value))}
             >
               <option value="" disabled>
                 选择模型
               </option>
-              {models.value.map((m: any) => (
+              {models.map((m) => (
                 <option
                   key={m.provider + m.id}
                   value={JSON.stringify({ provider: m.provider, id: m.id })}
@@ -535,10 +615,10 @@ function SettingsView() {
           <label>
             推理强度
             <select
-              value={state.value?.thinkingLevel || ""}
+              value={state?.thinkingLevel || ""}
               onChange={(e) => void update("thinking", e.target.value)}
             >
-              {levels.value.map((l: string) => (
+              {levels.map((l) => (
                 <option key={l}>{l}</option>
               ))}
             </select>
@@ -547,10 +627,13 @@ function SettingsView() {
             Agent 权限
             <select
               aria-label="权限模式"
-              value={value?.permission || "full"}
+              value={value?.permission ?? ""}
               onChange={(e) => void mode(e.target.value)}
             >
-              <option value="full">完全信任（现有行为）</option>
+              <option value="" disabled>
+                选择权限模式
+              </option>
+              <option value="full">完全信任</option>
               <option value="ask">非只读工具逐次审批</option>
               <option value="read-only">只读工具</option>
             </select>
@@ -559,9 +642,16 @@ function SettingsView() {
             这是 Pi 工具调用策略，不是操作系统沙箱。用户自行打开的终端不受 Agent 工具审批约束。
           </p>
         </div>
-        <div className="wb-form settings-section" hidden={section !== "models"}>
-          <Providers />
-        </div>
+        {opened.models && (
+          <div className="wb-form settings-section" hidden={section !== "models"}>
+            <Providers />
+          </div>
+        )}
+        {opened.prompt && (
+          <div hidden={section !== "prompt"}>
+            <BuiltinPromptEditor />
+          </div>
+        )}
         <div className="wb-form settings-section" hidden={section !== "general"}>
           <div className="wb-readonly">
             工作区<code>{value?.workspace}</code>
@@ -669,13 +759,22 @@ function Resources() {
               </small>
             </span>
             {s.scope === "project" && (
-              <Button
-                size="sm"
-                disabled={working}
-                onClick={() => void execute("mcp-remove", { name: s.name })}
-              >
-                移除
-              </Button>
+              <>
+                <Button
+                  size="sm"
+                  disabled={working}
+                  onClick={() => void execute("mcp-toggle", { name: s.name })}
+                >
+                  {s.enabled ? "停用" : "启用"}
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={working}
+                  onClick={() => void execute("mcp-remove", { name: s.name })}
+                >
+                  移除
+                </Button>
+              </>
             )}
           </div>
         ))}
@@ -732,19 +831,44 @@ function Resources() {
         </Button>
         <h4>Pi 插件包</h4>
         {inventory.value.packages.map((p: any, i: number) => (
-          <div key={i} className="wb-list-row">
-            <span>
-              {p.source}
-              <small>{p.scope}</small>
-            </span>
+          <div key={i} className={pluginCss.card + " wb-list-row"}>
+            <div className={pluginCss.cardHead}>
+              <span className={pluginCss.cardIcon}>
+                <Paperclip size={16} />
+              </span>
+              <div className={pluginCss.cardMain}>
+                <div className={pluginCss.cardTitle}>{p.source}</div>
+                <small className={pluginCss.cardDesc}>{p.scope}</small>
+              </div>
+            </div>
             {p.scope === "project" && (
-              <Button
-                size="sm"
-                disabled={working}
-                onClick={() => void execute("remove", { source: p.source })}
-              >
-                移除
-              </Button>
+              <>
+                <Button
+                  size="sm"
+                  disabled={working}
+                  onClick={() =>
+                    void execute(p.disabled ? "package-enable" : "package-disable", {
+                      source: p.source,
+                    })
+                  }
+                >
+                  {p.disabled ? "启用" : "停用"}
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={working || !/^(npm:|git:)/.test(p.source)}
+                  onClick={() => void execute("package-update", { source: p.source })}
+                >
+                  更新
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={working}
+                  onClick={() => void execute("remove", { source: p.source })}
+                >
+                  移除
+                </Button>
+              </>
             )}
           </div>
         ))}
@@ -770,9 +894,9 @@ function Resources() {
   );
 }
 function Jobs() {
-  const data = useLoad("jobs", { jobs: [], schedules: [], plans: {} }),
-    [session, setSession] = useState<any>(null),
-    [goal, setGoal] = useState(""),
+  const { jobs, state: session } = useProjection();
+  const data = { value: jobs ?? { jobs: [], schedules: [], plans: {} }, load: loadJobs, error: "" };
+  const [goal, setGoal] = useState(""),
     [plan, setPlan] = useState<{ text: string; done: boolean }[]>([]),
     [item, setItem] = useState(""),
     [label, setLabel] = useState(""),
@@ -780,14 +904,29 @@ function Jobs() {
     [cron, setCron] = useState("0 9 * * *"),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
+  const [expandedJob, setExpandedJob] = useState("");
+  const [previousPages, setPreviousPages] = useState<string[]>([]);
+  async function navigate(cursor: string, history: string[]) {
+    setBusy(true);
+    try {
+      await loadJobs(cursor);
+      setPreviousPages(history);
+      setExpandedJob("");
+      setError("");
+    } catch (e) {
+      setError(msg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
   const reloadJobs = data.load;
   useEffect(() => {
     let mounted = true;
     async function initialize() {
       try {
-        const [st, j] = await Promise.all([api("state"), api("jobs")]);
-        if (!mounted) return;
-        setSession(st);
+        const j = await loadJobs();
+        const st = getSnapshot().state;
+        if (!mounted || !st) return;
         const p = j.plans[st.sessionId];
         setGoal(p?.goal || "");
         setPlan(p?.items || []);
@@ -798,7 +937,13 @@ function Jobs() {
     void initialize();
     const switched = () => void initialize();
     window.addEventListener("axiom:session", switched);
-    const tick = setInterval(() => void reloadJobs(), 3000);
+    const tick = setInterval(
+      () =>
+        void reloadJobs().catch((e) => {
+          if (mounted) setError(msg(e));
+        }),
+      3000,
+    );
     return () => {
       mounted = false;
       clearInterval(tick);
@@ -809,7 +954,9 @@ function Jobs() {
     setBusy(true);
     try {
       await jobAction(a, v);
-      await data.load();
+      const creating = ["start", "team", "dag", "schedule-run"].includes(a);
+      await loadJobs(creating ? "" : undefined);
+      if (creating) setPreviousPages([]);
       setError("");
     } catch (e) {
       setError(msg(e));
@@ -1010,6 +1157,7 @@ function Jobs() {
             </div>
           ))}
         <h4>执行历史</h4>
+        <TeamOverview jobs={jobs?.teamJobs ?? []} />
         {data.value.jobs.map((j: any) => (
           <div className="wb-job" key={j.id}>
             <strong>{j.label}</strong>
@@ -1023,18 +1171,37 @@ function Jobs() {
                 取消
               </Button>
             )}
-            {j.error && errorBox(j.error)}
-            {j.results.map((r: any, i: number) => (
-              <details key={i}>
-                <summary>步骤 {i + 1}</summary>
-                <pre>{r.text}</pre>
-                <Button size="sm" onClick={() => insert(r.text)}>
-                  引用结果
-                </Button>
-              </details>
-            ))}
+            <Button
+              size="sm"
+              aria-expanded={expandedJob === j.id}
+              onClick={() => setExpandedJob(expandedJob === j.id ? "" : j.id)}
+            >
+              任务详情
+            </Button>
+            {expandedJob === j.id && <JobDetails job={j} insert={insert} />}
           </div>
         ))}
+        {jobs?.cursor && (
+          <Button disabled={busy} onClick={() => void navigate("", [])}>
+            返回最新任务
+          </Button>
+        )}
+        {!!previousPages.length && (
+          <Button
+            disabled={busy}
+            onClick={() => void navigate(previousPages.at(-1)!, previousPages.slice(0, -1))}
+          >
+            上一页
+          </Button>
+        )}
+        {jobs?.nextCursor && (
+          <Button
+            disabled={busy}
+            onClick={() => void navigate(jobs.nextCursor!, [...previousPages, jobs.cursor])}
+          >
+            下一页
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -1094,35 +1261,49 @@ function renderTab(tab: any) {
       return <Guide />;
   }
 }
-function SidebarPanels() {
+export function SidebarPanels() {
+  const { collapsed, workbenchOpen } = useLayout();
+  const { state } = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
+  const pane = state.nodes[state.activePaneId];
+  const activeTab = pane?.kind === "pane" && pane.activeTabId ? state.tabs[pane.activeTabId] : null;
   return (
     <div className={sidebarCss.panelList + " axiom-panel-list"}>
       {(["files", "terminal", "browser", "diff", "jobs", "resources"] as const).map((kind) => {
         const Icon = icons[kind];
+        const active = workbenchOpen && activeTab?.kind === kind;
         return (
-          <button
+          <div
             key={kind}
-            type="button"
-            className={sidebarCss.panelRow}
-            title={names[kind]}
-            aria-label={names[kind]}
-            onClick={() => {
-              if (!document.body.classList.contains("workbench-open")) toggleWorkbench();
-              open(kind);
-              document.body.classList.remove("sidebar-drawer");
-            }}
+            className={[
+              sidebarCss.panelEntry,
+              !collapsed && sidebarCss.panelEntryWide,
+              active && sidebarCss.panelEntryActive,
+            ]
+              .filter(Boolean)
+              .join(" ")}
           >
-            <span className={sidebarCss.panelGlyph}>
-              <Icon size={16} />
-            </span>
-            <span className={sidebarCss.panelTitle}>{names[kind]}</span>
-          </button>
+            <button
+              type="button"
+              className={sidebarCss.panelRow}
+              title={names[kind]}
+              aria-label={names[kind]}
+              aria-current={active ? "page" : undefined}
+              onClick={() => {
+                openPanel(kind);
+              }}
+            >
+              <span className={sidebarCss.panelGlyph} aria-hidden="true">
+                <Icon size={collapsed ? 18 : 16} />
+              </span>
+              <span className={sidebarCss.panelTitle}>{names[kind]}</span>
+            </button>
+          </div>
         );
       })}
     </div>
   );
 }
-function Workbench() {
+export function Workbench() {
   const snapshot = useSyncExternalStore(
       controller.subscribe,
       controller.getSnapshot,
@@ -1147,8 +1328,7 @@ function Workbench() {
   function expand() {
     const next = !wide;
     setWide(next);
-    document.body.classList.toggle("workbench-wide", next);
-    layout();
+    layoutActions.setWide(next);
   }
   return (
     <div className="wb-shell">
@@ -1204,19 +1384,29 @@ function Workbench() {
     </div>
   );
 }
-type Dialog = {
-  id: string;
-  method: string;
-  title?: string;
-  message?: string;
-  options?: string[];
-  placeholder?: string;
-  prefill?: string;
-};
-let dialogs: Dialog[] = [];
-let dialogsRoot: ReturnType<typeof createRoot> | undefined;
-function DialogView({ dialog }: { dialog: Dialog }) {
-  const [value, setValue] = useState(dialog.prefill || dialog.options?.[0] || ""),
+export function DialogView({ dialog }: { dialog: Dialog }) {
+  let request: ReturnType<typeof decodeRequest>;
+  try {
+    request = decodeRequest(dialog);
+  } catch {
+    return (
+      <PlainDialog
+        dialog={{
+          ...dialog,
+          prefill: "Invalid structured request",
+          title: "Invalid structured request",
+        }}
+      />
+    );
+  }
+  return request ? (
+    <StructuredDialog dialog={dialog} request={request} />
+  ) : (
+    <PlainDialog dialog={dialog} />
+  );
+}
+function PlainDialog({ dialog }: { dialog: Dialog }) {
+  const [value, setValue] = useState(dialog.prefill || ""),
     [error, setError] = useState(""),
     [working, setWorking] = useState(false);
   async function respond(payload: any) {
@@ -1253,7 +1443,7 @@ function DialogView({ dialog }: { dialog: Dialog }) {
           </Button>
           <Button
             variant="primary"
-            disabled={working}
+            disabled={working || (dialog.method === "select" && !dialog.options?.includes(value))}
             onClick={() => void respond(confirm ? { confirmed: true } : { value })}
           >
             {confirm ? "确认授权" : "确定"}
@@ -1263,11 +1453,21 @@ function DialogView({ dialog }: { dialog: Dialog }) {
     >
       {confirm && <pre className="wb-approval">{dialog.message}</pre>}
       {dialog.method === "select" && (
-        <select value={value} onChange={(e) => setValue(e.target.value)}>
-          {dialog.options?.map((o) => (
-            <option key={o}>{o}</option>
+        <div className={questionCss.options}>
+          {dialog.options?.map((o, i) => (
+            <button
+              type="button"
+              key={o}
+              className={questionCss.option + (value === o ? " " + questionCss.optionSelected : "")}
+              aria-pressed={value === o}
+              disabled={working}
+              onClick={() => setValue(o)}
+            >
+              <span className={questionCss.number}>{i + 1}</span>
+              <span className={questionCss.optionLabel}>{o}</span>
+            </button>
           ))}
-        </select>
+        </div>
       )}
       {dialog.method === "input" && (
         <input
@@ -1283,114 +1483,12 @@ function DialogView({ dialog }: { dialog: Dialog }) {
     </Modal>
   );
 }
-function renderDialogs() {
-  dialogsRoot ??= createRoot(document.getElementById("dialog-root")!);
-  dialogsRoot.render(dialogs[0] ? <DialogView key={dialogs[0].id} dialog={dialogs[0]} /> : null);
+
+export function openDelivery(path: string) {
+  layoutActions.showWorkbench();
+  open("editor", path.split("/").at(-1), path);
 }
-function removeDialog(id: string) {
-  dialogs = dialogs.filter((d) => d.id !== id);
-  renderDialogs();
-}
-export function extensionEvent(e: any) {
-  if (e.type === "ui_closed") {
-    removeDialog(e.id);
-    return;
-  }
-  if (e.type !== "extension_ui_request") return;
-  if (["confirm", "select", "input", "editor"].includes(e.method)) {
-    if (!dialogs.some((d) => d.id === e.id)) {
-      dialogs.push(e);
-      renderDialogs();
-    }
-  } else if (e.method === "notify") {
-    const el = document.getElementById("wb-notice");
-    if (el) {
-      el.textContent = e.message;
-      el.hidden = false;
-    }
-  } else if (e.method === "set_editor_text") {
-    const input = document.getElementById("prompt") as HTMLTextAreaElement;
-    input.value = e.text ?? "";
-  } else if (e.method === "setStatus" || e.method === "setWidget" || e.method === "setTitle") {
-    const el = document.getElementById("wb-notice");
-    if (el) {
-      el.textContent =
-        e.message ?? e.text ?? e.title ?? (Array.isArray(e.lines) ? e.lines.join(" ") : "");
-      el.hidden = false;
-    }
-  }
-}
-export async function syncDialogs() {
-  dialogs = await api("dialogs");
-  renderDialogs();
-}
-let attachments: { name: string; path?: string; image?: any }[] = [];
-function displayAttachments() {
-  const el = document.getElementById("attachment-list")!;
-  el.replaceChildren();
-  attachments.forEach((a, i) => {
-    const chip = document.createElement("button");
-    chip.type = "button";
-    chip.className = "attachment-chip";
-    chip.textContent = a.name + " ×";
-    chip.title = "移除附件";
-    chip.onclick = () => {
-      attachments.splice(i, 1);
-      displayAttachments();
-    };
-    el.append(chip);
-  });
-}
-async function selectFiles(input: HTMLInputElement) {
-  for (const file of [...(input.files || [])]) {
-    try {
-      if (file.size > 8 * 1024 * 1024) throw Error("单个附件不得超过 8 MiB");
-      if (attachments.length >= 8) throw Error("一次最多 8 个附件");
-      const data = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result).split(",")[1]);
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(file);
-      });
-      if (["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type))
-        attachments.push({
-          name: file.name,
-          image: { type: "image", mimeType: file.type, data },
-        });
-      else {
-        const result = await api("upload", { name: file.name, data });
-        attachments.push({ name: file.name, path: result.path });
-      }
-      displayAttachments();
-    } catch (e) {
-      document.getElementById("error")!.textContent = msg(e);
-    }
-  }
-  input.value = "";
-}
-export function attachmentPayload() {
-  return {
-    suffix: attachments
-      .filter((a) => a.path)
-      .map((a) => "附件：" + a.name + "（工作区路径：" + a.path + "）")
-      .join("\n"),
-    images: attachments.filter((a) => a.image).map((a) => a.image),
-  };
-}
-export function clearAttachments() {
-  attachments = [];
-  displayAttachments();
-}
-export function initWorkbench() {
-  createRoot(document.getElementById("workbench")!).render(<Workbench />);
-  createRoot(document.getElementById("sidebar-panels")!).render(<SidebarPanels />);
-  document.getElementById("sidebar-settings")!.onclick = () => {
-    if (!document.body.classList.contains("workbench-open")) toggleWorkbench();
-    open("settings");
-    document.body.classList.remove("sidebar-drawer");
-  };
-  const input = document.getElementById("attach-input") as HTMLInputElement;
-  input.onchange = () => void selectFiles(input);
-  document.getElementById("attach-button")!.onclick = () => input.click();
-  document.getElementById("show-workbench")!.onclick = toggleWorkbench;
+export function openPanel(kind: string) {
+  layoutActions.showWorkbench();
+  open(kind);
 }
