@@ -62,3 +62,26 @@ test("0.5.1 metadata migrates once and retry writes roll back together", () => {
     assert.deepEqual(store.state,{jobs:[j],plans:{p1:plan},schedules:[],mail:[]});
   } finally {store?.close();rmSync(dir,{recursive:true,force:true});}
 });
+
+test("history pages retain their insertion boundary and omit task payloads", () => {
+  const dir = mkdtempSync(join(tmpdir(), "axiom-cursor-"));
+  const store = openJobStore(dir);
+  try {
+    const jobs = ["a", "b", "c"].map(id => ({id, label:id, status:"completed", team:"t", results:[{text:id}]}));
+    store.save(jobs);
+    const first = store.page(null, 2);
+    assert.deepEqual(first.jobs.map(j=>j.id), ["c", "b"]);
+    assert.deepEqual(first.teamJobs.map(j=>j.id), ["c", "b", "a"]);
+    assert.ok(first.jobs.every(j=>!("results" in j)));
+    store.save([{...jobs[1],status:"failed"}, {...jobs[0],id:"d"}]);
+    assert.deepEqual(store.page(first.cursor, 2).jobs.map(j=>j.id), ["c", "b"]);
+    const last = store.page(first.nextCursor, 2);
+    assert.deepEqual(last.jobs.map(j=>j.id), ["a"]);
+    assert.equal(last.nextCursor, null);
+    assert.deepEqual(store.job("b").results,[{text:"b"}]);
+    assert.equal(store.page(null, 2).jobs[0].id,"d");
+  } finally {
+    store.close();
+    rmSync(dir, {recursive:true,force:true});
+  }
+});

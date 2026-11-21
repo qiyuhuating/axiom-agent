@@ -273,6 +273,17 @@ for (const s of store.enabledSchedules()) {
     persist([], { table: "schedules", id: s.id, value: s });
   }
 }
+export function jobPage(cursor, limit, session) {
+  const page = store.page(cursor, limit);
+  for (const j of [...page.jobs, ...page.teamJobs]) {
+    const live = activeJobs.get(j.id);
+    if (live) j.activity = live.activity;
+  }
+  return { ...page, ...store.context(session) };
+}
+export function jobDetail(id) {
+  return activeJobs.get(id) ?? store.job(id);
+}
 export function jobState() {
   const snapshot = store.state;
   snapshot.jobs = snapshot.jobs.map((j) => activeJobs.get(j.id) ?? j);

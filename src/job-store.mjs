@@ -59,6 +59,44 @@ export function openJobStore(dir) {
     "INSERT INTO jobs(id,value) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value",
   );
   const store = {
+    page(cursor, limit) {
+      const fields = `id, json_extract(value,'$.label') AS label,
+        json_extract(value,'$.status') AS status, json_extract(value,'$.activity') AS activity,
+        json_extract(value,'$.team') AS team, json_extract(value,'$.node') AS node,
+        json_extract(value,'$.blockedBy') AS dependencies`;
+      const result = db
+        .prepare(
+          "SELECT CAST(rowid AS TEXT) AS cursor," +
+            fields +
+            " FROM jobs " +
+            (cursor ? "WHERE rowid <= ? " : "") +
+            "ORDER BY rowid DESC LIMIT ?",
+        )
+        .all(...(cursor ? [cursor] : []), limit + 1);
+      const nextCursor = result.length > limit ? result.pop().cursor : null;
+      const summary = ({ cursor, dependencies, ...job }) => ({
+        ...job,
+        blockedBy: JSON.parse(dependencies ?? "[]"),
+      });
+      const teams = [...new Set(result.map((j) => j.team).filter(Boolean))];
+      const members = db.prepare(
+        "SELECT " + fields + " FROM jobs WHERE json_extract(value,'$.team')=? ORDER BY rowid DESC",
+      );
+      return {
+        jobs: result.map(summary),
+        teamJobs: teams.flatMap((id) => members.all(id).map(summary)),
+        cursor: result[0]?.cursor ?? "",
+        nextCursor,
+      };
+    },
+    context(session) {
+      const plan = rows("SELECT value FROM plans WHERE id=?", session)[0];
+      return {
+        plans: plan ? { [session]: plan } : {},
+        schedules: store.schedules(),
+        mail: rows("SELECT value FROM mail ORDER BY rowid DESC LIMIT 50").reverse(),
+      };
+    },
     active: () =>
       rows(
         "SELECT value FROM jobs WHERE json_extract(value,'$.status') IN ('queued','running') ORDER BY rowid DESC",

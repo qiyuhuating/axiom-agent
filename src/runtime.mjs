@@ -28,7 +28,26 @@ const server = createServer(async (req, res) => {
           sessionDir: config.sessionDir,
           terminalBackend: config.terminalBackend,
         });
-      if (path === "/api/jobs") return json(res, ctx.axiomJobs.state());
+      if (path === "/api/jobs") {
+        const params = url.searchParams;
+        if (!params.has("view")) return json(res, ctx.axiomJobs.state());
+        if (params.get("view") === "detail") {
+          const job = ctx.axiomJobs.detail(params.get("id") ?? "");
+          return job ? json(res, job) : json(res, { error: "Job not found" }, 404);
+        }
+        const cursor = params.get("cursor"),
+          limit = Number(params.get("limit") ?? 50);
+        if (
+          params.get("view") !== "page" ||
+          (cursor !== null &&
+            (!/^[1-9][0-9]{0,18}$/.test(cursor) || BigInt(cursor) > 9223372036854775807n)) ||
+          !Number.isInteger(limit) ||
+          limit < 1 ||
+          limit > 200
+        )
+          return json(res, { error: "Invalid job page" }, 400);
+        return json(res, ctx.axiomJobs.page(cursor, limit, params.get("session") ?? ""));
+      }
       if (path === "/api/terminals") return json(res, await ctx.axiomTerminal.listAsync());
       if (path === "/api/terminal/events") {
         if (term.streamTerminal) return await term.streamTerminal(req, res);
