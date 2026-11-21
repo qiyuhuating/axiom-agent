@@ -32,10 +32,32 @@ try{
  const a=await theme();assert.equal(a.bg,"rgb(255, 255, 255)");assert.equal(a.radius,"28px");
  await capture(page,"light.png");
  await page.locator("#theme-toggle").click();assert.ok((await theme()).bg!=="rgb(255, 255, 255)");await capture(page,"dark.png");
- if(await page.locator("#sidebar-toggle").isVisible()){await page.locator("#sidebar-toggle").click();assert.equal(await page.locator(".sidebar").evaluate(e=>e.offsetWidth),56);await page.locator("#sidebar-open").click();}
+ if(await page.locator("#sidebar-toggle").isVisible()){await page.locator("#sidebar-toggle").click();await page.waitForFunction(()=>document.querySelector('.sidebar')?.offsetWidth===56);await page.locator("#sidebar-open").click();}
  await page.locator("#theme-toggle").click();
- await page.locator("#show-workbench").click();await page.locator(".inspector").getByTitle("终端",{exact:true}).waitFor();await capture(page,"workbench.png");
- await page.locator("#show-workbench").click();
+ await page.locator("#show-workbench").click();await page.locator(".inspector").getByTitle("终端",{exact:true}).waitFor();
+ assert.equal(await page.locator(".wb-launch").count(),0);
+ await page.locator("#rightbar-collapse").waitFor();
+ const widthBefore=await page.locator(".inspector").evaluate(element=>element.getBoundingClientRect().width);
+ const handle=page.getByRole("separator",{name:"调整右侧栏宽度"});
+ await handle.focus();await handle.press("ArrowLeft");
+ await page.waitForFunction(w=>document.querySelector(".inspector")?.getBoundingClientRect().width>w+8,widthBefore);
+ const dragBefore=await page.locator(".inspector").evaluate(e=>e.getBoundingClientRect().width);
+ const edge=await handle.boundingBox();assert.ok(edge);
+ await page.mouse.move(edge.x+edge.width/2,edge.y+edge.height/2);
+ await page.mouse.down();
+ await page.mouse.move(edge.x-48,edge.y+edge.height/2,{steps:6});
+ await page.mouse.up();
+ await page.waitForFunction(w=>document.querySelector(".inspector")?.getBoundingClientRect().width>w+24,dragBefore);
+ assert.ok(await page.evaluate(()=>Number(localStorage.getItem("axiom.rightbar.width"))>0));
+
+ await page.getByRole("button",{name:"全屏展开"}).click();
+ await page.waitForFunction(()=>{const p=document.querySelector(".inspector")?.getBoundingClientRect();return p&&Math.abs(p.left)<2&&Math.abs(p.width-innerWidth)<2;});
+ await page.getByRole("button",{name:"退出全屏"}).click();
+ await capture(page,"workbench.png");
+ await page.locator(".inspector").getByRole("button",{name:"执行轨迹"}).click();
+ await page.locator("#trace").waitFor();
+ await capture(page,"trajectory.png");
+ await page.locator("#rightbar-collapse").click();
  await page.locator('#sidebar-panels').getByRole('button',{name:'文件',exact:true}).click();
  await page.getByTitle('刷新文件',{exact:true}).waitFor();
  await capture(page,'files.png');
@@ -64,6 +86,7 @@ try{
  await page.getByText('已保存',{exact:true}).waitFor();
  assert.equal(await builtin.inputValue(),defaultPrompt);
  assert.equal((await (await page.request.get(base+'/api/builtin-prompt')).json()).text,defaultPrompt);
+ await page.getByRole('button',{name:'关闭设置',exact:true}).click();
  await page.locator('#sidebar-panels').getByRole('button',{name:'任务与计划',exact:true}).click();
  await page.getByLabel('DAG 节点').waitFor();
  await capture(page,'jobs.png');
@@ -73,7 +96,7 @@ try{
  await page.getByRole('button',{name:'搜索会话',exact:true}).click();
  await page.getByRole('textbox',{name:'搜索会话'}).fill('no-match-axiom');
  await page.getByRole('textbox',{name:'搜索会话'}).press('Escape');
- await page.locator('#show-workbench').click();
+ await page.locator('#rightbar-collapse').click();
  const prompt=page.locator('#prompt');
  await prompt.fill('/');
  const options=page.locator('#axiom-composer-list [role=option]');
@@ -200,5 +223,18 @@ try{
  await page.waitForFunction(()=>document.querySelector("#status")?.textContent==="就绪");
  assert.equal(await page.locator("#send").isDisabled(),false);
  await capture(page,'composer-features.png');
+ const viewport={width:await page.evaluate(()=>innerWidth),height:await page.evaluate(()=>innerHeight)};
+ await page.setViewportSize({width:720,height:860});
+ await page.waitForFunction(()=>innerWidth===720);
+ const center=await page.locator("main").evaluate(element=>{const r=element.parentElement.getBoundingClientRect();return {left:r.left,width:r.width};});
+ assert.ok(center.left<2&&center.width>680,"narrow conversation must fill the frame");
+ await page.locator("#sidebar-open").click();
+ await page.locator(".sidebar-backdrop").click();
+ await page.locator("#show-workbench").click();
+ await page.waitForFunction(()=>{const r=document.querySelector(".inspector")?.getBoundingClientRect();return r&&Math.abs(r.left)<2&&Math.abs(r.width-innerWidth)<2;});
+ await capture(page,"narrow.png");
+ await page.locator("#rightbar-collapse").click();
+ await page.setViewportSize(viewport);
+ await page.waitForFunction(width=>innerWidth===width,viewport.width);
  assert.deepEqual(errors,[]);console.log("HARNESS_UI_RENDER_PASS",JSON.stringify(a));
 }finally{await browser.close();}

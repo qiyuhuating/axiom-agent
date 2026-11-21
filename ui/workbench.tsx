@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { decodeRequest } from "../src/interaction-protocol.mjs";
-import { JobDetails, TeamOverview } from "./harness-features.tsx";
+import { useModalLayer } from "../vendor/dsh/primitives/useModalLayer.ts";
+import { JobDetails, TeamOverview, TraceLedger } from "./harness-features.tsx";
 import { api, dirtyTabs, errorBox, Header, msg } from "./panel-shared.tsx";
 import {
   appendDraft,
@@ -19,6 +21,7 @@ const Editor = React.lazy(() => import("./editor.tsx"));
 const TerminalView = React.lazy(() => import("./terminal.tsx"));
 
 import {
+  Activity,
   ArrowLeft,
   ArrowRight,
   Check,
@@ -29,6 +32,7 @@ import {
   Globe,
   Maximize2,
   Minimize2,
+  PanelRightClose,
   Paperclip,
   Play,
   Plus,
@@ -71,6 +75,7 @@ const icons = {
   jobs: Workflow,
   browser: Globe,
   guide: Plus,
+  trajectory: Activity,
 };
 const names = {
   files: "文件",
@@ -81,6 +86,7 @@ const names = {
   jobs: "任务与计划",
   browser: "浏览器",
   guide: "工作台",
+  trajectory: "执行轨迹",
 };
 const labels = {
   emptyPane: "打开工作台功能",
@@ -110,12 +116,17 @@ const controller = new DockController({
   makePaneTab: make,
 });
 controller.setExpanded(true);
-const open = (kind: string, title?: string, id?: string) =>
+const open = (kind: string, title?: string, id?: string) => {
+  if (kind === "settings") {
+    openSettings();
+    return;
+  }
   controller.openContent({
     kind,
     title: title || names[kind as keyof typeof names] || kind,
     contentId: id || (["terminal", "browser"].includes(kind) ? crypto.randomUUID() : kind),
   });
+};
 const insert = appendDraft;
 function useLoad(path: string, initial: any) {
   const [value, setValue] = useState(initial),
@@ -541,7 +552,7 @@ const settingsSections = {
   models: "模型提供商",
   prompt: "内置提示词",
 } as const;
-function SettingsView() {
+function SettingsView({ onClose }: { onClose?: () => void } = {}) {
   const { value, error, load, setError } = useLoad("settings", null);
   const models = useProjectionField("models");
   const levels = useProjectionField("levels");
@@ -566,12 +577,17 @@ function SettingsView() {
     }
   }
   return (
-    <div className="wb-panel">
+    <div className="wb-panel axiom-settings-view">
       <Header>
-        <strong>Pi 设置</strong>
+        <strong>设置</strong>
         <Button size="sm" onClick={() => void load()}>
           刷新
         </Button>
+        {onClose && (
+          <Button size="sm" title="关闭设置" aria-label="关闭设置" onClick={onClose}>
+            ×
+          </Button>
+        )}
       </Header>
       <nav className="settings-sections" aria-label="设置分类">
         {(Object.keys(settingsSections) as (keyof typeof settingsSections)[]).map((key) => (
@@ -1217,7 +1233,13 @@ function Guide() {
         .map(([kind, label]) => {
           const Icon = icons[kind as keyof typeof icons];
           return (
-            <button type="button" key={kind} className={guideCss.entry} onClick={() => open(kind)}>
+            <button
+              type="button"
+              key={kind}
+              className={guideCss.entry}
+              title={label}
+              onClick={() => open(kind)}
+            >
               <span className={guideCss.entryIcon}>
                 <Icon size={22} />
               </span>
@@ -1231,6 +1253,20 @@ function Guide() {
   );
 }
 
+function Trajectory() {
+  const tools = useProjectionField("tools");
+  const busy = useProjectionField("busy");
+  return (
+    <div className="wb-panel axiom-trajectory-pane">
+      <div className="wb-bar">
+        <strong>执行轨迹</strong>
+      </div>
+      <div className="wb-scroll" id="trace">
+        <TraceLedger tools={tools} busy={busy} />
+      </div>
+    </div>
+  );
+}
 function renderTab(tab: any) {
   switch (tab.kind) {
     case "files":
@@ -1249,12 +1285,13 @@ function renderTab(tab: any) {
           <TerminalView />
         </React.Suspense>
       );
-    case "settings":
-      return <SettingsView />;
+
     case "resources":
       return <Resources />;
     case "jobs":
       return <Jobs />;
+    case "trajectory":
+      return <Trajectory />;
     case "browser":
       return <BrowserView />;
     default:
@@ -1309,7 +1346,7 @@ export function Workbench() {
       controller.getSnapshot,
       controller.getSnapshot,
     ),
-    [wide, setWide] = useState(false);
+    layout = useLayout();
   const proxy = useRef(
     new Proxy(controller, {
       get(target, key) {
@@ -1325,53 +1362,13 @@ export function Workbench() {
       },
     }),
   ).current;
-  function expand() {
-    const next = !wide;
-    setWide(next);
-    layoutActions.setWide(next);
+  function toggleFullscreen() {
+    const next = !layout.fullscreen;
+    controller.setMode(next ? "fullscreen" : "push");
+    layoutActions.setFullscreen(next);
   }
   return (
     <div className="wb-shell">
-      <div className="wb-launch">
-        <Button size="sm" title="文件" icon={<Folder size={16} />} onClick={() => open("files")} />
-        <Button
-          size="sm"
-          title="Git Diff"
-          icon={<GitCompare size={16} />}
-          onClick={() => open("diff")}
-        />
-        <Button
-          size="sm"
-          title="终端"
-          icon={<TerminalIcon size={16} />}
-          onClick={() => open("terminal")}
-        />
-        <Button
-          size="sm"
-          title="浏览器"
-          icon={<Globe size={16} />}
-          onClick={() => open("browser")}
-        />
-        <Button
-          size="sm"
-          title="设置"
-          icon={<Settings size={16} />}
-          onClick={() => open("settings")}
-        />
-        <Button size="sm" title="任务" icon={<Workflow size={16} />} onClick={() => open("jobs")} />
-        <Button
-          size="sm"
-          title="资源"
-          icon={<Paperclip size={16} />}
-          onClick={() => open("resources")}
-        />
-        <Button
-          size="sm"
-          title="扩大工作台"
-          icon={wide ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-          onClick={expand}
-        />
-      </div>
       <DockLayout
         state={snapshot.state}
         canSplit={snapshot.canSplit}
@@ -1380,6 +1377,28 @@ export function Workbench() {
         dropZones="horizontal"
         keepMounted={() => true}
         renderTab={renderTab}
+        chrome={
+          <div className="axiom-rightbar-chrome">
+            <button
+              type="button"
+              title={layout.fullscreen ? "退出全屏" : "全屏展开"}
+              aria-label={layout.fullscreen ? "退出全屏" : "全屏展开"}
+              disabled={layout.width < 768}
+              onClick={toggleFullscreen}
+            >
+              {layout.fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+            </button>
+            <button
+              type="button"
+              id="rightbar-collapse"
+              title="收起右侧栏"
+              aria-label="收起右侧栏"
+              onClick={layoutActions.toggleWorkbench}
+            >
+              <PanelRightClose size={16} />
+            </button>
+          </div>
+        }
       />
     </div>
   );
@@ -1488,7 +1507,56 @@ export function openDelivery(path: string) {
   layoutActions.showWorkbench();
   open("editor", path.split("/").at(-1), path);
 }
+let settingsOpen = false;
+const settingsListeners = new Set<() => void>();
+const subscribeSettings = (listener: () => void) => {
+  settingsListeners.add(listener);
+  return () => {
+    settingsListeners.delete(listener);
+  };
+};
+const settingsSnapshot = () => settingsOpen;
+export function openSettings() {
+  settingsOpen = true;
+  layoutActions.closeDrawer();
+  for (const listener of settingsListeners) listener();
+}
+function closeSettings() {
+  settingsOpen = false;
+  for (const listener of settingsListeners) listener();
+}
+export function SettingsOverlay() {
+  const shown = useSyncExternalStore(subscribeSettings, settingsSnapshot);
+  const root = useRef<HTMLDivElement>(null);
+  useModalLayer(root, shown, closeSettings);
+  if (!shown) return null;
+  return createPortal(
+    <div className="axiom-settings-overlay">
+      <button
+        type="button"
+        className="axiom-settings-backdrop"
+        aria-label="关闭设置背景"
+        onClick={closeSettings}
+      />
+      <section
+        ref={root}
+        role="dialog"
+        aria-modal="true"
+        aria-label="设置"
+        className="axiom-settings-dialog"
+        tabIndex={-1}
+      >
+        <SettingsView onClose={closeSettings} />
+      </section>
+    </div>,
+    document.body,
+  );
+}
 export function openPanel(kind: string) {
+  if (kind === "settings") {
+    openSettings();
+    return;
+  }
   layoutActions.showWorkbench();
   open(kind);
 }

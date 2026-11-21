@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import {
   computeColumns,
   RIGHTBAR_DEFAULT_RATIO,
+  RIGHTBAR_MAX_RATIO,
   SIDEBAR_AUTO_COLLAPSE,
   SIDEBAR_DEFAULT,
   SIDEBAR_DRAWER_BREAKPOINT,
@@ -13,7 +14,9 @@ type LayoutState = {
   collapsed: boolean;
   drawer: boolean;
   workbenchOpen: boolean;
-  wide: boolean;
+  fullscreen: boolean;
+  rightbarWidth: number | null;
+  resizing: boolean;
 };
 let state: LayoutState = {
   width: window.innerWidth,
@@ -21,7 +24,9 @@ let state: LayoutState = {
     window.innerWidth < SIDEBAR_AUTO_COLLAPSE && window.innerWidth >= SIDEBAR_DRAWER_BREAKPOINT,
   drawer: false,
   workbenchOpen: false,
-  wide: false,
+  fullscreen: false,
+  rightbarWidth: Number(localStorage.getItem("axiom.rightbar.width")) || null,
+  resizing: false,
 };
 const listeners = new Set<() => void>();
 const subscribe = (fn: () => void) => {
@@ -68,24 +73,41 @@ export const layoutActions = {
   toggleWorkbench() {
     set({ workbenchOpen: !state.workbenchOpen });
   },
-  setWide(wide: boolean) {
-    set({ wide });
+  setFullscreen(fullscreen: boolean) {
+    if (fullscreen !== state.fullscreen) set({ fullscreen });
+  },
+  setRightbarWidth(width: number, persist = true) {
+    const next = Math.round(Math.max(300, Math.min(width, state.width * RIGHTBAR_MAX_RATIO)));
+    if (persist) localStorage.setItem("axiom.rightbar.width", String(next));
+    if (state.rightbarWidth === next) return;
+    set({ rightbarWidth: next });
+  },
+  setResizing(resizing: boolean) {
+    if (state.resizing !== resizing) set({ resizing });
   },
   apply(s: LayoutState) {
     const drawer = s.width < SIDEBAR_DRAWER_BREAKPOINT;
     const c = computeColumns(
       s.width,
       s.collapsed ? 0 : SIDEBAR_DEFAULT,
-      s.workbenchOpen ? s.width * (s.wide ? 0.65 : RIGHTBAR_DEFAULT_RATIO) : 0,
+      s.workbenchOpen ? (s.rightbarWidth ?? s.width * RIGHTBAR_DEFAULT_RATIO) : 0,
     );
     document.body.classList.toggle("sidebar-collapsed", s.collapsed);
     document.body.classList.toggle("sidebar-drawer", s.drawer);
     document.body.classList.toggle("workbench-open", s.workbenchOpen);
+    document.body.classList.toggle(
+      "rightbar-fullscreen",
+      s.workbenchOpen && (s.fullscreen || s.width < SIDEBAR_DRAWER_BREAKPOINT),
+    );
     document.body.classList.toggle(
       "workbench-overlay",
       s.workbenchOpen && (drawer || c.rightbar === 0),
     );
     document.body.style.setProperty("--sidebar-width", c.sidebar + "px");
     document.body.style.setProperty("--trace-width", c.rightbar + "px");
+    document.body.style.setProperty(
+      "--dsh-rightbar-width",
+      Math.max(300, c.rightbar || s.rightbarWidth || s.width * RIGHTBAR_DEFAULT_RATIO) + "px",
+    );
   },
 };

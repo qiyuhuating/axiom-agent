@@ -1,6 +1,7 @@
 import {
-  Activity,
   ArrowUp,
+  ChevronDown,
+  FolderOpen,
   PanelLeft,
   PanelRight,
   Paperclip,
@@ -12,8 +13,11 @@ import {
 import MarkdownIt from "markdown-it";
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import conversationCss from "../vendor/dsh/conversation/ConversationRoot.module.css";
 import heroCss from "../vendor/dsh/conversation/HeroShell.module.css";
 import inputCss from "../vendor/dsh/conversation/InputBar.module.css";
+import frameCss from "../vendor/dsh/layout/AppFrame.module.css";
+import { FishLogo } from "../vendor/dsh/primitives/FishLogo.tsx";
 import { StateDot } from "../vendor/dsh/primitives/StateDot.tsx";
 import { UserMessageBubble } from "../vendor/dsh/primitives/UserMessageBubble.tsx";
 import settingsCss from "../vendor/dsh/sidebar/SettingsRoot.module.css";
@@ -25,7 +29,6 @@ import {
   HarnessModeDock,
   ObservedChanges,
   PlanDock,
-  TraceLedger,
 } from "./harness-features.tsx";
 import {
   action,
@@ -41,10 +44,11 @@ import {
   textOf,
   useProjection,
 } from "./projection.ts";
+import { RightbarResizeHandle } from "./rightbar-resize.tsx";
 import { UserText } from "./secret-view.tsx";
 import { SessionControls } from "./session-controls.tsx";
 import { layoutActions, useLayout } from "./shell-layout.ts";
-import { DialogView, openPanel, SidebarPanels, Workbench } from "./workbench.tsx";
+import { DialogView, openPanel, SettingsOverlay, SidebarPanels, Workbench } from "./workbench.tsx";
 
 const markdown = new MarkdownIt({ html: false, linkify: true }).disable("image");
 const MemoWorkbench = memo(Workbench);
@@ -53,7 +57,6 @@ const MemoSessionList = memo(SessionList);
 const MemoDraftEditor = memo(DraftEditor);
 const MemoObservedChanges = memo(ObservedChanges);
 const MemoDeliverableCards = memo(DeliverableCards);
-const MemoTraceLedger = memo(TraceLedger);
 const MemoHarnessModeDock = memo(HarnessModeDock);
 const MemoPlanDock = memo(PlanDock);
 const MarkdownMessage = memo(function MarkdownMessage({ text }: { text: string }) {
@@ -140,6 +143,10 @@ function App() {
   );
   const unavailable = !p.connected || p.syncing || p.syncFailed || p.changing || !sessionId;
   const locked = p.busy || unavailable;
+  const empty = p.messages.length === 0 && !p.stream;
+  const sessionTitle = p.sessions.find((item) => item.id === sessionId)?.name || "新会话";
+  const workspace = p.state?.workspace ?? "";
+  const workspaceName = workspace.split(/[\\/]/).filter(Boolean).at(-1) || "工作区";
   useEffect(connect, []);
   useEffect(() => {
     const media = matchMedia("(prefers-color-scheme: dark)"),
@@ -185,7 +192,13 @@ function App() {
     setMode(next);
   };
   return (
-    <>
+    <div
+      className={frameCss.frame + " axiom-frame"}
+      data-harness-shell
+      data-sidebar-collapsed={l.collapsed}
+      data-rightbar-fullscreen={(l.workbenchOpen && (l.fullscreen || l.width < 768)) || undefined}
+      data-resizing={l.resizing || undefined}
+    >
       {l.drawer && (
         <button
           type="button"
@@ -195,10 +208,18 @@ function App() {
         />
       )}
       <aside
-        className={"sidebar " + sidebarCss.root + (l.collapsed ? " " + sidebarCss.collapsed : "")}
+        className={
+          "sidebar " +
+          frameCss.sidebarCol +
+          " " +
+          sidebarCss.root +
+          (l.collapsed ? " " + sidebarCss.collapsed : "")
+        }
       >
         <div className={"brand " + sidebarCss.logoRow}>
-          <span className="mark">A</span>
+          <span className={sidebarCss.brandMark}>
+            <FishLogo size={23} />
+          </span>
           <div className={"brand-name " + sidebarCss.brandName}>Axiom Agent</div>
           <button
             type="button"
@@ -224,7 +245,7 @@ function App() {
             <span>新建会话</span>
           </button>
         </div>
-        <nav id="sidebar-panels" aria-label="工作台页面">
+        <nav id="sidebar-panels" className={sidebarCss.panelList} aria-label="工作台页面">
           <MemoSidebarPanels />
         </nav>
         <nav id="sessions">
@@ -260,303 +281,355 @@ function App() {
           本地工作台 · Pi 1.5.2
         </footer>
       </aside>
-      <main>
-        <header>
-          <button
-            type="button"
-            id="sidebar-open"
-            title="展开侧栏"
-            aria-label="展开侧栏"
-            onClick={layoutActions.expand}
+      <div className={frameCss.centerCol + " axiom-center"}>
+        <main className={conversationCss.root} data-phase={empty ? "hero" : "active"}>
+          <header
+            className={conversationCss.header + (empty ? " " + conversationCss.headerBlank : "")}
           >
-            <PanelLeft size={16} />
-          </button>
-          <div className="header-title">
-            <strong>工作区</strong>
-            <span id="workspace">{p.state?.workspace ?? "连接中"}</span>
-          </div>
-          <div className="controls">
-            <button
-              id="show-workbench"
-              type="button"
-              title="显示工作台"
-              aria-expanded={l.workbenchOpen}
-              onClick={layoutActions.toggleWorkbench}
-            >
-              <PanelRight size={16} />
-              工作台
-            </button>
-            <button
-              id="session-actions"
-              type="button"
-              aria-label="Pi 会话"
-              disabled={unavailable}
-              onClick={() => setSessionControlsOpen(true)}
-            >
-              Pi
-            </button>
-            <span id="status" role="status">
-              <StateDot
-                state={
-                  !p.connected
-                    ? p.state
-                      ? "error"
-                      : "ongoing"
-                    : p.syncing
-                      ? "ongoing"
-                      : p.syncFailed
-                        ? "warning"
-                        : p.dialogs.length
-                          ? "warning"
-                          : p.busy
-                            ? "ongoing"
-                            : "idle"
-                }
-              />
-              {!p.connected
-                ? p.state
-                  ? "连接中断"
-                  : "连接中"
-                : p.syncing
-                  ? "同步中"
-                  : p.syncFailed
-                    ? "同步失败"
-                    : p.dialogs.length
-                      ? "等待输入"
-                      : p.retrying
-                        ? "正在重试"
-                        : p.busy
-                          ? "运行中"
-                          : "就绪"}
-            </span>
-            {p.connected && p.syncFailed && (
+            <div className={conversationCss.headerLeading}>
               <button
                 type="button"
-                onClick={() =>
-                  void run(async () => {
-                    await refresh();
-                    await loadOptions();
-                  })
-                }
+                id="sidebar-open"
+                title="展开侧栏"
+                aria-label="展开侧栏"
+                onClick={layoutActions.expand}
               >
-                重新同步
+                <PanelLeft size={16} />
               </button>
-            )}
-          </div>
-        </header>
-        <section
-          id="transcript"
-          ref={transcript}
-          aria-live="polite"
-          onScroll={({ currentTarget }) => {
-            const { scrollHeight, scrollTop, clientHeight } = currentTarget;
-            const following = scrollHeight - scrollTop - clientHeight <= 64;
-            if (following === followingTranscript.current) return;
-            followingTranscript.current = following;
-            setShowJump(!following);
-          }}
-        >
-          {!p.messages.length && !p.stream && (
-            <div className="welcome">
-              <h1 className={heroCss.headline}>今天构建什么？</h1>
-              <p>理解代码、实现功能、验证工程，或者普通对话</p>
             </div>
-          )}
-          <TranscriptMessages
-            messages={p.messages}
-            sessionId={p.state?.sessionId}
-            locked={locked}
-            onQuote={selectQuote}
-          />
-          <MemoObservedChanges tools={p.tools} />
-          <MemoDeliverableCards tools={p.tools} />
-          {p.stream && (
-            <article className="assistant">
-              <div>{p.stream}</div>
-            </article>
-          )}
-        </section>
-        {showJump && (
-          <div className="transcript-jump">
-            <button
-              type="button"
-              onClick={() => {
-                followingTranscript.current = true;
-                setShowJump(false);
-                const element = transcript.current;
-                if (element) element.scrollTop = element.scrollHeight;
+            <div className={conversationCss.titleRow}>
+              <div className={conversationCss.titleCluster}>
+                <div className="header-title">
+                  <strong>{empty ? "" : sessionTitle}</strong>
+                  <span id="workspace" title={workspace}>
+                    {empty ? "" : workspaceName}
+                  </span>
+                </div>
+              </div>
+              <div className={conversationCss.headerUtilities}>
+                <div className="controls">
+                  {!l.workbenchOpen && (
+                    <button
+                      id="show-workbench"
+                      type="button"
+                      title="显示工作台"
+                      aria-expanded={l.workbenchOpen}
+                      onClick={layoutActions.toggleWorkbench}
+                    >
+                      <PanelRight size={16} />
+                    </button>
+                  )}
+                  <button
+                    id="session-actions"
+                    type="button"
+                    aria-label="Pi 会话"
+                    disabled={unavailable}
+                    onClick={() => setSessionControlsOpen(true)}
+                  >
+                    Pi
+                  </button>
+                  <span id="status" role="status">
+                    <StateDot
+                      state={
+                        !p.connected
+                          ? p.state
+                            ? "error"
+                            : "ongoing"
+                          : p.syncing
+                            ? "ongoing"
+                            : p.syncFailed
+                              ? "warning"
+                              : p.dialogs.length
+                                ? "warning"
+                                : p.busy
+                                  ? "ongoing"
+                                  : "idle"
+                      }
+                    />
+                    {!p.connected
+                      ? p.state
+                        ? "连接中断"
+                        : "连接中"
+                      : p.syncing
+                        ? "同步中"
+                        : p.syncFailed
+                          ? "同步失败"
+                          : p.dialogs.length
+                            ? "等待输入"
+                            : p.retrying
+                              ? "正在重试"
+                              : p.busy
+                                ? "运行中"
+                                : "就绪"}
+                  </span>
+                  {p.connected && p.syncFailed && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void run(async () => {
+                          await refresh();
+                          await loadOptions();
+                        })
+                      }
+                    >
+                      重新同步
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+            {!empty && (
+              <nav className={conversationCss.tabs} aria-label="会话视图">
+                <button type="button" className="axiom-tab-active" aria-current="page">
+                  对话
+                </button>
+                <button type="button" onClick={() => openPanel("files")}>
+                  文件
+                </button>
+                <button type="button" onClick={() => openPanel("jobs")}>
+                  任务
+                </button>
+                <button type="button" onClick={() => openPanel("terminal")}>
+                  终端
+                </button>
+              </nav>
+            )}
+          </header>
+          <div
+            className={conversationCss.body + " axiom-conversation-body"}
+            data-phase={empty ? "hero" : "active"}
+          >
+            <section
+              id="transcript"
+              ref={transcript}
+              aria-live="polite"
+              onScroll={({ currentTarget }) => {
+                const { scrollHeight, scrollTop, clientHeight } = currentTarget;
+                const following = scrollHeight - scrollTop - clientHeight <= 64;
+                if (following === followingTranscript.current) return;
+                followingTranscript.current = following;
+                setShowJump(!following);
               }}
             >
-              回到最新消息
-            </button>
-          </div>
-        )}
-        <div className="composer">
-          <MemoHarnessModeDock />
-          <MemoPlanDock key={p.state?.sessionId} />
-          <div id="error" role="alert">
-            {p.error}
-          </div>
-          <form
-            id="form"
-            className={inputCss.card}
-            data-composer-card
-            onSubmit={(e) => {
-              e.preventDefault();
-              void run(() => submit(queue));
-            }}
-          >
-            <div id="attachment-list">
-              {p.attachments.map((a, i) => (
+              {empty && (
+                <div className={"welcome " + heroCss.headline}>
+                  <FishLogo size={34} />
+                  <span>今天构建什么？</span>
+                </div>
+              )}
+              <TranscriptMessages
+                messages={p.messages}
+                sessionId={p.state?.sessionId}
+                locked={locked}
+                onQuote={selectQuote}
+              />
+              <MemoObservedChanges tools={p.tools} />
+              <MemoDeliverableCards tools={p.tools} />
+              {p.stream && (
+                <article className="assistant">
+                  <div>{p.stream}</div>
+                </article>
+              )}
+            </section>
+            {showJump && (
+              <div className="transcript-jump">
                 <button
                   type="button"
-                  className="attachment-chip"
-                  key={i}
-                  onClick={() => removeAttachment(i)}
-                  title="移除附件"
+                  onClick={() => {
+                    followingTranscript.current = true;
+                    setShowJump(false);
+                    const element = transcript.current;
+                    if (element) element.scrollTop = element.scrollHeight;
+                  }}
                 >
-                  {a.name} ×
+                  回到最新消息
                 </button>
-              ))}
-            </div>
-            <MemoDraftEditor
-              key={p.state?.sessionId}
-              quote={quote?.sessionId === sessionId ? quote : null}
-              onQuoteConsumed={clearQuote}
-              draft={p.draft}
-              disabled={unavailable}
-              sessionId={p.state?.sessionId}
-              onSubmit={submitDraft}
-            />
-            <div className="actions">
-              <input
-                ref={files}
-                type="file"
-                id="attach-input"
-                multiple
-                hidden
-                onChange={(e) => {
-                  const list = Array.from(e.currentTarget.files ?? []);
-                  e.currentTarget.value = "";
-                  void addFiles(list);
-                }}
-              />
-              <button
-                type="button"
-                id="attach-button"
-                disabled={unavailable}
-                aria-label="添加附件"
-                title="添加附件"
-                onClick={() => files.current?.click()}
-              >
-                <Paperclip size={16} />
-              </button>
-              <select
-                id="models"
-                aria-label="模型"
-                disabled={locked}
-                value={
-                  p.state?.model
-                    ? JSON.stringify({ provider: p.state.model.provider, id: p.state.model.id })
-                    : ""
-                }
-                onChange={(e) => {
-                  const value = e.target.value;
-                  if (value)
-                    void run(async () => {
-                      await action("model", JSON.parse(value));
-                      await loadOptions();
-                    });
-                }}
-              >
-                <option value="">选择可用模型</option>
-                {p.models.map((m) => (
-                  <option
-                    key={m.provider + ":" + m.id}
-                    value={JSON.stringify({ provider: m.provider, id: m.id })}
+              </div>
+            )}
+            <div
+              className={
+                "composer " + conversationCss.composerSeat + (empty ? " axiom-hero-composer" : "")
+              }
+            >
+              {empty && (
+                <div className={conversationCss.heroWorkspaceRow + " axiom-hero-workspace"}>
+                  <button
+                    type="button"
+                    className={heroCss.workspace}
+                    title={workspace}
+                    onClick={() => openPanel("files")}
                   >
-                    {m.provider} / {m.id}
-                  </option>
-                ))}
-              </select>
-              <select
-                id="levels"
-                aria-label="思考强度"
-                disabled={locked}
-                value={p.state?.thinkingLevel ?? ""}
-                onChange={(e) => {
-                  const level = e.target.value;
-                  void run(async () => {
-                    await action("thinking", level);
-                    await loadOptions();
-                  });
+                    <FolderOpen size={16} />
+                    <span className={heroCss.workspaceLabel}>{workspaceName}</span>
+                    <ChevronDown size={12} />
+                  </button>
+                </div>
+              )}
+              <MemoHarnessModeDock />
+              <MemoPlanDock key={p.state?.sessionId} />
+              <div id="error" role="alert">
+                {p.error}
+              </div>
+              <form
+                id="form"
+                className={inputCss.card}
+                data-composer-card
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void run(() => submit(queue));
                 }}
               >
-                {p.levels.map((level) => (
-                  <option key={level}>{level}</option>
-                ))}
-              </select>
-              <select
-                id="queue-mode"
-                aria-label="运行中的消息队列"
-                value={queue}
-                onChange={(e) => setQueue(e.target.value)}
-              >
-                <option value="steer">引导当前任务</option>
-                <option value="followUp">当前任务结束后发送</option>
-              </select>
-              <span className="action-spacer" />
-              <button
-                type="button"
-                id="stop"
-                disabled={!p.busy || !p.connected}
-                aria-label="停止"
-                title="停止"
-                onClick={() =>
-                  void run(async () => {
-                    await action("abort");
-                    await refresh();
-                  })
-                }
-              >
-                <Square size={16} />
-              </button>
-              <button
-                id="send"
-                type="submit"
-                disabled={unavailable}
-                aria-label={p.busy ? "加入消息队列" : "发送"}
-                title={p.busy ? "加入消息队列 (Ctrl+Enter)" : "发送 (Ctrl+Enter)"}
-              >
-                <ArrowUp size={18} />
-              </button>
+                <div id="attachment-list">
+                  {p.attachments.map((a, i) => (
+                    <button
+                      type="button"
+                      className="attachment-chip"
+                      key={i}
+                      onClick={() => removeAttachment(i)}
+                      title="移除附件"
+                    >
+                      {a.name} ×
+                    </button>
+                  ))}
+                </div>
+                <MemoDraftEditor
+                  key={p.state?.sessionId}
+                  quote={quote?.sessionId === sessionId ? quote : null}
+                  onQuoteConsumed={clearQuote}
+                  draft={p.draft}
+                  disabled={unavailable}
+                  sessionId={p.state?.sessionId}
+                  onSubmit={submitDraft}
+                />
+                <div className="actions">
+                  <input
+                    ref={files}
+                    type="file"
+                    id="attach-input"
+                    multiple
+                    hidden
+                    onChange={(e) => {
+                      const list = Array.from(e.currentTarget.files ?? []);
+                      e.currentTarget.value = "";
+                      void addFiles(list);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    id="attach-button"
+                    disabled={unavailable}
+                    aria-label="添加附件"
+                    title="添加附件"
+                    onClick={() => files.current?.click()}
+                  >
+                    <Paperclip size={16} />
+                  </button>
+                  <select
+                    id="models"
+                    aria-label="模型"
+                    disabled={locked}
+                    value={
+                      p.state?.model
+                        ? JSON.stringify({ provider: p.state.model.provider, id: p.state.model.id })
+                        : ""
+                    }
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value)
+                        void run(async () => {
+                          await action("model", JSON.parse(value));
+                          await loadOptions();
+                        });
+                    }}
+                  >
+                    <option value="">选择可用模型</option>
+                    {p.models.map((m) => (
+                      <option
+                        key={m.provider + ":" + m.id}
+                        value={JSON.stringify({ provider: m.provider, id: m.id })}
+                      >
+                        {m.provider} / {m.id}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    id="levels"
+                    aria-label="思考强度"
+                    disabled={locked}
+                    value={p.state?.thinkingLevel ?? ""}
+                    onChange={(e) => {
+                      const level = e.target.value;
+                      void run(async () => {
+                        await action("thinking", level);
+                        await loadOptions();
+                      });
+                    }}
+                  >
+                    {p.levels.map((level) => (
+                      <option key={level}>{level}</option>
+                    ))}
+                  </select>
+                  <select
+                    id="queue-mode"
+                    aria-label="运行中的消息队列"
+                    value={queue}
+                    onChange={(e) => setQueue(e.target.value)}
+                  >
+                    <option value="steer">引导当前任务</option>
+                    <option value="followUp">当前任务结束后发送</option>
+                  </select>
+                  <span className="action-spacer" />
+                  <button
+                    type="button"
+                    id="stop"
+                    disabled={!p.busy || !p.connected}
+                    aria-label="停止"
+                    title="停止"
+                    onClick={() =>
+                      void run(async () => {
+                        await action("abort");
+                        await refresh();
+                      })
+                    }
+                  >
+                    <Square size={16} />
+                  </button>
+                  <button
+                    id="send"
+                    type="submit"
+                    disabled={unavailable}
+                    aria-label={p.busy ? "加入消息队列" : "发送"}
+                    title={p.busy ? "加入消息队列 (Ctrl+Enter)" : "发送 (Ctrl+Enter)"}
+                  >
+                    <ArrowUp size={18} />
+                  </button>
+                </div>
+              </form>
+              <small>Agent 在当前工作区以本机用户身份执行工具。只对可信任项目授权。</small>
             </div>
-          </form>
-          <small>Agent 在当前工作区以本机用户身份执行工具。只对可信任项目授权。</small>
-        </div>
-      </main>
-      <aside className="inspector">
+          </div>
+        </main>
+      </div>
+      <RightbarResizeHandle />
+      <aside
+        className={"inspector " + frameCss.rightbarCol}
+        data-rightbar-panel
+        data-sidebar-right-open={l.workbenchOpen || undefined}
+        data-rightbar-mode={l.fullscreen || l.width < 768 ? "fullscreen" : "push"}
+      >
         <div id="workbench">
           <MemoWorkbench />
-        </div>
-        <div className="trace-panel">
-          <h2 id="trace-heading">
-            <Activity size={16} />
-            执行轨迹
-          </h2>
-          <div id="trace">
-            <MemoTraceLedger tools={p.tools} busy={p.busy} />
-          </div>
         </div>
       </aside>
       <div id="dialog-root">
         {p.dialogs[0] && <DialogView key={p.dialogs[0].id} dialog={p.dialogs[0]} />}
       </div>
       {sessionControlsOpen && <SessionControls onClose={() => setSessionControlsOpen(false)} />}
+      <SettingsOverlay />
       <div id="wb-notice" role="status" hidden={!p.notice}>
         {p.notice}
       </div>
-    </>
+    </div>
   );
 }
 createRoot(document.getElementById("root")!).render(<App />);
