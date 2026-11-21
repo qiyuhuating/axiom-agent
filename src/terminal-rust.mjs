@@ -1,10 +1,10 @@
-import { spawn } from "node:child_process";
-import { closeSync, existsSync, openSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import { config, root } from "./config.mjs";
+import { launchLogged } from "./log-launch.mjs";
 import { runtimeToken } from "./runtime-auth.mjs";
 import { createCordisTerminalAdapter } from "./terminal-cordis.mjs";
 
@@ -44,22 +44,9 @@ export async function createRustTerminalBackend() {
     if (!starting) {
       starting = (async () => {
         if (!existsSync(binary)) throw Error("Rust terminal binary not found: " + binary);
-        const fd = openSync(resolve(config.sessionDir, "rust-terminal.log"), "a");
-        try {
-          const args = [String(port), config.workspace, config.sessionDir];
-          if (config.importLegacyTerminalHistory === true) args.push("--import-legacy");
-          const child = spawn(binary, args, {
-            cwd: root,
-            env: process.env,
-            detached: true,
-            windowsHide: true,
-            stdio: ["ignore", fd, fd],
-          });
-          child.on("error", (e) => console.error("Rust terminal startup:", e.message));
-          child.unref();
-        } finally {
-          closeSync(fd);
-        }
+        const args = [String(port), config.workspace, config.sessionDir];
+        if (config.importLegacyTerminalHistory === true) args.push("--import-legacy");
+        launchLogged(binary, args, root, resolve(config.sessionDir, "rust-terminal.log"));
         for (let i = 0; i < 40; i++) {
           await delay(250);
           if (await ready()) return;

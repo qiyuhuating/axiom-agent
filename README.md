@@ -77,6 +77,16 @@ The NSIS build stages a checksum-verified Node.js 24.16.0 distribution and npm, 
 
 Before upgrading, finish active work and stop the runtime using the old configuration. Back up the stopped session directory, config and Pi profile to private storage. If a legacy session directory is inside the workspace, move the complete stopped directory outside it and update `sessionDir`. Remove the exposed copy from the workspace after verifying the backup and migration. The new host verifies the runtime's workspace, session directory and terminal backend. On identity mismatch, check the config and stop the old instance with its own configuration. For rollback, stop the candidate and restore the matching program, configuration and backup together. Keep the original backup until session, terminal and job history have been checked.
 
+### Job storage and log retention in 0.5.1
+
+The runtime stores jobs in `sessionDir/axiom-jobs/jobs.sqlite`. On first start it imports the previous `state.json` in one transaction and keeps that file for rollback. Job transitions update only the affected rows. Plans, schedules and team mail share a separate metadata record. Stop the runtime before backing up or restoring the complete directory. Downgrading to 0.5.0 reads the legacy snapshot and cannot see work performed since migration.
+
+A failed storage commit stops the background runtime. Free space on the session volume and request runtime health from the workbench to restart it. Check job state before resubmitting. Previously committed jobs are retained, and unfinished work is marked interrupted on restart.
+
+The runtime, Rust terminal and desktop host each cap their diagnostic log at 8 MiB. Reaching the cap starts a new log in the same file. Export diagnostics before rollover if longer retention is required. When storage is full, diagnostic records may be lost.
+
+Use `node scripts/check-job-storage.mjs 3600` for the isolated one-hour store workload. In WSL, run `sh scripts/check-storage-full.sh /absolute/path/to/node` as root for an isolated 12 MiB tmpfs test. Both checks require Node 24.
+
 ## Development
 
 ```powershell

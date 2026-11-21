@@ -1,6 +1,6 @@
 {
   "name": "axiom-agent",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Pi-powered local engineering workbench with DeepSeek Harness components",
   "directories": {
     "test": "test"

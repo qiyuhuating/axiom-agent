@@ -56,5 +56,5 @@ try{
  await Promise.race([exited,new Promise(resolve=>setTimeout(resolve,5500))]);
  if(child.exitCode===null){child.kill();await exited;}
  lines.close();
- await rm(dir,{recursive:true,force:true});
+ await rm(dir,{recursive:true,force:true,maxRetries:40,retryDelay:50});
 }

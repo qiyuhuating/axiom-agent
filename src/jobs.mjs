@@ -1,10 +1,11 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { Cron } from "croner";
 import { assertTaskGraphCandidate } from "../vendor/dsh/team/task-graph.mjs";
 import { config, root } from "./config.mjs";
+import { openJobStore } from "./job-store.mjs";
 import { PiClient } from "./pi-client.mjs";
 import { platform } from "./platform/index.mjs";
 import { builtinPromptPath } from "./prompt-store.mjs";
@@ -12,26 +13,26 @@ import { retryTeam } from "./team-retry.mjs";
 
 const base = resolve(config.sessionDir, "axiom-jobs");
 mkdirSync(base, { recursive: true });
-const path = resolve(base, "state.json");
-const state = existsSync(path)
-  ? JSON.parse(readFileSync(path, "utf8"))
-  : { jobs: [], schedules: [], plans: {} };
+const { state, save, close } = openJobStore(base);
 const workers = new Map(),
   timers = new Map();
-state.mail ??= [];
 let closing = false;
-function persist() {
-  writeFileSync(path + ".tmp", JSON.stringify(state, null, 2));
-  renameSync(path + ".tmp", path);
-}
-for (const job of state.jobs)
-  if (["running", "queued"].includes(job.status)) {
-    job.status = "interrupted";
-    job.error = "Runtime stopped before completion";
-    if (/^[0-9a-f-]{36}$/.test(job.id))
-      rmSync(resolve(base, job.id, "agent"), { recursive: true, force: true });
+function persist(jobs = [], metadata = true) {
+  try {
+    save(jobs, metadata);
+  } catch (error) {
+    console.error("Job storage unavailable:", error.code, error.errcode);
+    process.exit(1);
   }
-persist();
+}
+const interrupted = state.jobs.filter((job) => ["running", "queued"].includes(job.status));
+for (const job of interrupted) {
+  job.status = "interrupted";
+  job.error = "Runtime stopped before completion";
+  if (/^[0-9a-f-]{36}$/.test(job.id))
+    rmSync(resolve(base, job.id, "agent"), { recursive: true, force: true });
+}
+if (interrupted.length) persist(interrupted, false);
 function validateSteps(steps) {
   if (
     !Array.isArray(steps) ||
@@ -62,7 +63,7 @@ function addJob(
   };
   state.jobs.unshift(job);
   if (!defer) {
-    persist();
+    persist([job], false);
     pump();
   }
   return job;
@@ -92,7 +93,11 @@ function pump() {
         }
       }
     } while (changed);
-    if (blocked) persist();
+    if (blocked)
+      persist(
+        queued.filter((j) => j.status === "blocked"),
+        false,
+      );
     const next = queued.findLast(
       (j) =>
         j.status === "queued" &&
@@ -108,14 +113,14 @@ function pump() {
       token: randomBytes(32).toString("hex"),
     };
     workers.set(next.id, worker);
-    void run(worker);
+    worker.finished = run(worker);
   }
 }
 async function run(worker) {
   const { job } = worker;
   job.status = "running";
   job.started = new Date().toISOString();
-  persist();
+  persist([job], false);
   try {
     const dir = resolve(base, job.id);
     mkdirSync(dir, { recursive: true });
@@ -222,7 +227,7 @@ async function run(worker) {
           .map((c) => c.text)
           .join("\n"),
       });
-      persist();
+      persist([job], false);
     }
     job.status = "completed";
   } catch (e) {
@@ -238,7 +243,7 @@ async function run(worker) {
       job.activity = "";
       job.finished = new Date().toISOString();
       workers.delete(job.id);
-      persist();
+      persist([job], false);
       pump();
     }
   }
@@ -315,13 +320,13 @@ export async function jobAction(action, value) {
       jobs[i].blockedBy = nodes[i].dependsOn.map(
         (id) => jobs[nodes.findIndex((n) => n.id === id)].id,
       );
-    persist();
+    persist(jobs, false);
     pump();
     return jobs;
   }
   if (action === "team-retry") {
     const retried = retryTeam(state, value.id, workers);
-    persist();
+    persist(state.jobs.filter((j) => j.team === value.id));
     pump();
     return { retried };
   }
@@ -338,7 +343,7 @@ export async function jobAction(action, value) {
         active.push(w);
       } else j.status = "cancelled";
     }
-    persist();
+    persist(team, false);
     const results = await Promise.allSettled(active.map((w) => w.client?.abort()));
     pump();
     const failed = results.filter((r) => r.status === "rejected");
@@ -351,7 +356,7 @@ export async function jobAction(action, value) {
     if (!j) throw Error("Job not found");
     if (j.status === "queued") {
       j.status = "cancelled";
-      persist();
+      persist([j], false);
       pump();
       return j;
     }
@@ -410,10 +415,13 @@ export async function jobAction(action, value) {
 export async function closeJobs() {
   closing = true;
   for (const timer of timers.values()) timer.stop();
-  for (const w of workers.values()) {
+  const active = [...workers.values()];
+  for (const w of active) {
     w.cancelled = true;
     await w.client?.stop();
   }
+  await Promise.all(active.map((w) => w.finished));
+  close();
 }
 
 export function teamTool(token, { operation, to, text }) {
