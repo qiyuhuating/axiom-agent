@@ -35,7 +35,7 @@ const t = (key: string, params?: Record<string, number>) =>
     "todo.progress.active": `进行中 ${params?.active}`,
     "todo.progress.pending": `待处理 ${params?.pending}`,
   })[key] ?? key;
-export function HarnessModeDock() {
+export function HarnessModeDock({ inline = false }: { inline?: boolean }) {
   const harness = useProjectionField("harness"),
     busy = useProjectionField("busy"),
     syncing = useProjectionField("syncing"),
@@ -51,7 +51,7 @@ export function HarnessModeDock() {
       await refresh();
     });
   return (
-    <div className="plan-dock">
+    <div className={inline ? "axiom-input-mode" : "plan-dock"}>
       <div className={goalCss.bar}>
         <Button
           size="sm"

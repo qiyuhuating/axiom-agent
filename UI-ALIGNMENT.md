@@ -83,3 +83,16 @@ The right DockKit surface is now keyed to the active Pi session rather than one 
 The panel reuses the pinned upstream SidebarRight.module.css for its body, tab titles, 28 px controls, dock-host slide transitions and fullscreen layering. The original fullscreen glyphs are reused. DockKit owns the tab strip; the Guide title has its original compass glyph and only one Guide tab can be added per pane. A closed panel keeps its dock host mounted but off-edge, without intercepting conversation or mobile sidebar clicks; floating DockKit windows remain pointer-accessible.
 
 Windows WebView2 tests cover right pane keyboard/drag width adjustment, fullscreen, narrow overlay, collapse-and-restore animation, tab navigation, and switching between two test-only Pi session projections. Session A's file tab and session B's terminal tab remain isolated and restore on returning. The Pi runtime, business APIs and existing terminal integration are unchanged. Before changing the active Pi session, the projection asks permission to discard dirty file-editor drafts, since this adapter remounts session-specific DockKit content. Cancelling leaves the current editor intact.
+## Upstream header, hero, InputBar and theme fidelity
+
+The Pi adapter now mounts the SidebarRight ExpandButton in the original ConversationSessionHeader headerCorner seat, not in the header utilities. Its mobile-expanded seat stays mounted but disabled and visually hidden, preserving the title-row width. The active conversation title uses the upstream single-line breadcrumb and header-menu presentation.
+
+The new HeroMark directly reuses the upstream EmptyHero fish's morph path constants, SVG animate timing, hover rules and reduced-motion gate, along with the original HeroShell title-group structure. The Axiom product name remains in the left rail.
+
+The composer uses the upstream InputBar row/tools/modes/trailing/standardControls hierarchy. Pi plan/goal actions now occupy the mode seat; task-plan details move to the composer dock instead of creating a second card above the editor. Attachment, native Pi queue-mode, provider/effort selection, abort and submit retain their existing semantics. Upstream filled submit and stop SVG artwork replaces mismatched stroke glyphs.
+
+The pinned ui-theme/styles/gradient-shadow-text.css is now included verbatim. It supplies missing elevation/stroke tokens and the original text scale, restoring the 0.5 px composer stroke and subtle soft shadow. Empty Lexical placeholder visibility now projects from actual editor text and attached items, not from an unrelated stale draft prop.
+
+The isolated Windows WebView2 fixture verifies the corner seat relative to utilities, original HeroFish SVG animation when motion is allowed, tool-row order and overflow, real card shadow, placeholder after clearing a draft, and existing dark mode, 720 px overlay, modal recovery and Rust terminal UTF-8/reconnect.
+
+This brings source-level structure closer to the pinned original. It is not a claim that every upstream view, slot, native window integration, service or advanced interaction is visually or functionally identical. Exact new NSIS installation remains gated on the PR's CI artifact.

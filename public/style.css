@@ -80,11 +80,11 @@ main:has(.welcome) .composer{flex:1 1 0;}
 .actions button,.actions select{height:32px;padding:0 8px;min-width:0;border:0;color:var(--muted);}
 .actions select{max-width:min(155px,100%);text-overflow:ellipsis;}
 .action-spacer{flex:1;}
-#send,#stop,#attach-button,#show-workbench{display:inline-flex;align-items:center;justify-content:center;gap:6px;}
+#show-workbench{display:inline-flex;align-items:center;justify-content:center;}
 #send,#stop{width:34px;padding:0;border-radius:50%;}
 #send span,#stop span,#attach-button span{display:none;}
-#send{background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-foreground);}
-#send:hover:not(:disabled){background:var(--dsw-alias-button-primary-hover);}
+#send{background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-on-color);}
+
 #stop:disabled{display:none;}
 .composer small{display:block;text-align:center;margin:6px 0;font-size:11px;color:var(--dsw-alias-label-tertiary);}
 #error{color:var(--danger);white-space:pre-wrap;font-size:13px;}
@@ -226,13 +226,6 @@ body { display:block; }
 .axiom-frame #sessions { overflow:auto; }
 .axiom-frame main { flex:1; min-height:0; min-width:0; }
 .axiom-frame main>header { box-sizing:border-box; }
-.axiom-frame main>header .header-title { flex:1; }
-.axiom-frame main>header .header-title strong {
-  font-weight:500; font-size:14px; line-height:20px;
-}
-.axiom-frame main>header .header-title #workspace {
-  font-size:12px; line-height:16px;
-}
 .axiom-frame main>header .controls { justify-content:flex-end; gap:6px; }
 .axiom-frame main>header .controls button { border-radius:8px; min-width:28px; height:28px; padding:4px 6px; }
 .axiom-frame main>header .controls #status { padding-left:4px; }
@@ -292,21 +285,7 @@ main:has(.welcome) .axiom-conversation-body[data-phase='hero'] .composer {
   background:var(--dsw-specific-input-major);
   box-shadow:var(--dsw-elevation-soft);
 }
-.axiom-conversation-body .composer form .actions {
-  display:flex;
-  flex-wrap:nowrap;
-  gap:6px;
-  align-items:center;
-}
-.axiom-conversation-body .composer form .actions select {
-  height:30px; max-width:165px; min-width:0; text-overflow:ellipsis;
-  border:0; border-radius:8px; font-size:12px;
-  color:var(--dsw-alias-label-secondary);
-}
-.axiom-conversation-body .composer form .actions #send,
-.axiom-conversation-body .composer form .actions #stop {
-  flex:none; width:32px; height:32px; padding:0;
-}
+
 .axiom-conversation-body .composer .axiom-hero-workspace {
   padding-left:8px;
   margin:3px 0 9px;
@@ -338,7 +317,7 @@ main:has(.welcome) .axiom-conversation-body[data-phase='hero'] .composer {
   .axiom-frame main>header { padding-inline:12px; }
   .axiom-conversation-body[data-phase='hero'] { padding-inline:12px; }
   .axiom-conversation-body .composer { padding-inline:12px; }
-  .axiom-conversation-body .composer form .actions { flex-wrap:wrap; }
+
 }
 @media (prefers-reduced-motion:reduce) {
   .axiom-frame, .axiom-frame * { transition-duration:0s; }
@@ -529,10 +508,10 @@ body.rightbar-fullscreen .axiom-frame>.inspector {
   .axiom-chat-column {width:100%;}
 }
 /* Pi model catalog adapter using upstream Harness ModelSelect geometry and tokens. */
-.axiom-conversation-body .composer form .actions .axiom-model-select {
+.axiom-conversation-body .composer form .axiom-input-controls .axiom-model-select {
   display:flex;flex:0 1 auto;min-width:0;max-width:min(260px,45%);
 }
-.axiom-conversation-body .composer form .actions .axiom-model-select button#models {
+.axiom-conversation-body .composer form .axiom-input-controls .axiom-model-select button#models {
   min-width:0;max-width:100%;font-size:13px;height:28px;
 }
 .axiom-model-menu[data-menu-material] {
@@ -563,7 +542,7 @@ body.rightbar-fullscreen .axiom-frame>.inspector {
 }
 .axiom-model-menu .axiom-model-option {width:100%;}
 @media(max-width:767px){
-  .axiom-conversation-body .composer form .actions .axiom-model-select {max-width:min(190px,50%);}
+  .axiom-conversation-body .composer form .axiom-input-controls .axiom-model-select {max-width:min(190px,50%);}
   .axiom-model-menu {max-height:min(360px,calc(100dvh - 60px));}
 }
 .axiom-model-spinner {animation:axiom-model-rotation 700ms linear infinite;}
@@ -582,4 +561,34 @@ body:not(.workbench-open) .axiom-frame > .inspector {display:flex;pointer-events
 .axiom-frame .axiom-sidebar-right-panel:not([data-sidebar-right-open]) > div {pointer-events:none;}
 .axiom-frame .axiom-sidebar-right-panel[data-sidebar-right-panel='fullscreen'] {
   --dsh-dockkit-dock-layer:40;
+}
+/* Pi actions occupy the original Harness InputBar row / tools / trailing seats. */
+.axiom-conversation-body .composer form .axiom-input-controls {
+  flex-wrap:wrap;
+  gap:12px;
+}
+.axiom-conversation-body .composer form .axiom-input-controls #queue-mode {
+  max-width:155px;
+}
+.axiom-conversation-body .composer form .axiom-input-controls .axiom-model-select {
+  flex-shrink:1;
+}
+/* Harness composer mode slot: Pi plan/goal actions share the toolbar, no duplicate card. */
+.axiom-conversation-body .composer form .axiom-input-mode {
+  display:flex;min-width:0;max-width:min(260px,35vw);
+}
+.axiom-conversation-body .composer form .axiom-input-mode > div {
+  flex-wrap:nowrap;min-width:0;gap:6px;
+}
+.axiom-conversation-body .composer form .axiom-input-mode [class*="objective"] {
+  min-width:0;max-width:112px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.axiom-conversation-body .composer form .axiom-input-controls [class*="modes"] {
+  min-width:0;
+}
+.axiom-conversation-body .composer [data-composer-dock] {
+  width:100%;max-width:var(--dsh-composer-card-max-width,764px);
+}
+@media(max-width:767px){
+  .axiom-conversation-body .composer form .axiom-input-mode {max-width:min(220px,45vw);}
 }

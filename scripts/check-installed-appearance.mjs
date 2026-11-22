@@ -277,7 +277,39 @@ await darkModelMenu.waitFor({state:"detached"});
  await page.waitForFunction(()=>document.querySelector("#status")?.textContent==="就绪");
  assert.equal(await page.locator("#send").isDisabled(),false);
  await capture(page,'composer-features.png');
- const viewport={width:await page.evaluate(()=>innerWidth),height:await page.evaluate(()=>innerHeight)};
+ // Original Harness ExpandButton belongs to the corner seat, outside status utilities.
+ const corner=page.locator("[data-conversation-header-corner]");
+ await corner.locator("[data-sidebar-right-expand]#show-workbench").waitFor();
+ assert.equal(await page.locator(".headerUtilities #show-workbench").count(),0);
+ assert.equal(await corner.locator("#show-workbench").isEnabled(),true);
+ const cornerRect=await corner.boundingBox();
+ const utilityRect=await page.locator("#status").boundingBox();
+ assert.ok(cornerRect&&utilityRect&&cornerRect.x>=utilityRect.x+utilityRect.width-1,
+   "Harness right-panel control must follow the utility cluster");
+ await capture(page,"header-corner.png");
+ await page.locator(".welcome > span").first().hover();
+ if(await page.evaluate(()=>matchMedia("(hover: hover) and (prefers-reduced-motion: no-preference)").matches))
+   assert.equal(await page.locator(".welcome svg animate").count(),1,"Original SVG fish morph must animate on hover");
+ await capture(page,"hero-animated.png"); // InputBar composition matches upstream row -> tools/trailing group geometry.
+ const inputGeometry=await page.evaluate(()=>{
+  const row=document.querySelector("[data-composer-controls]");
+  const rect=selector=>document.querySelector(selector)?.getBoundingClientRect().toJSON();
+  return {align:getComputedStyle(row).justifyContent,width:row.clientWidth,scroll:row.scrollWidth,
+   attach:rect("#attach-button"),model:rect("#models"),send:rect("#send"),row:row.getBoundingClientRect().toJSON()};
+ });
+ assert.equal(inputGeometry.align,"space-between");
+ assert.ok(inputGeometry.attach.x<inputGeometry.model.x&&inputGeometry.model.x<inputGeometry.send.x,
+   "Harness input tools must precede the model and submit group");
+ assert.ok(inputGeometry.scroll<=inputGeometry.width+2,"InputBar must not overflow its own row");
+ const composerSurface=await page.locator("#form").evaluate(element=>getComputedStyle(element).boxShadow);
+ assert.notEqual(composerSurface,"none","Harness InputBar must use original elevation token");
+ await page.locator("#prompt").click();
+ await page.keyboard.insertText("fixture temporary text");
+ await page.keyboard.press("Control+A");
+ await page.keyboard.press("Backspace");
+ await page.waitForFunction(()=>document.querySelector("#prompt")?.hasAttribute("data-empty"));
+ const placeholder=await page.locator("#prompt").evaluate(element=>getComputedStyle(element,"::before").content);
+ assert.ok(placeholder.includes("描述任务"),"Empty composer must show its prompt"); await capture(page,"harness-input-bar.png"); const viewport={width:await page.evaluate(()=>innerWidth),height:await page.evaluate(()=>innerHeight)};
  await page.setViewportSize({width:720,height:860});
  await page.waitForFunction(()=>innerWidth===720);
  const center=await page.locator("main").evaluate(element=>{const r=element.parentElement.getBoundingClientRect();return {left:r.left,width:r.width};});

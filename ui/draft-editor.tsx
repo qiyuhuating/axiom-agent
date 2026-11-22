@@ -46,6 +46,7 @@ import { openDelivery } from "./workbench.tsx";
 import "../vendor/dsh/conversation/composer-editor.module.css";
 export function DraftEditor({
   draft,
+  hasAttachments,
   disabled,
   onSubmit,
   sessionId,
@@ -53,6 +54,7 @@ export function DraftEditor({
   onQuoteConsumed,
 }: {
   draft: string;
+  hasAttachments: boolean;
   disabled: boolean;
   onSubmit: () => void;
   sessionId: string | undefined;
@@ -254,7 +256,7 @@ export function DraftEditor({
         editable={!disabled}
         className={inputCss.input + " axiom-lexical-input"}
         data-placeholder="描述任务，或提出问题…"
-        data-empty={!draft || undefined}
+        data-empty={(!projected.text && !hasAttachments) || undefined}
         aria-label="输入消息"
         aria-controls={menu.items.length ? "axiom-composer-list" : undefined}
         aria-expanded={menu.items.length > 0}
