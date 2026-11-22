@@ -17,8 +17,19 @@ try{
  const panel=page.locator('.wb-panel').filter({has:page.locator('.wb-terminal')});
  await panel.getByRole('button',{name:'\u65b0\u5efa',exact:true}).click();
  await page.locator('.xterm-helper-textarea').waitFor({state:'attached'});
- const waitText=needle=>page.waitForFunction(s=>document.querySelector('.xterm-rows')?.textContent.includes(s),needle,{timeout:20000});
- await waitText('PS ');
+ const waitText=async(needle,timeout=20000)=>{
+  try {
+   await page.waitForFunction(s=>document.querySelector('.xterm-rows')?.textContent.includes(s),needle,{timeout});
+  } catch(error) {
+   const output=await page.locator('.xterm-rows').textContent().catch(()=>null);
+   const notice=await page.locator('.wb-terminal').textContent().catch(()=>null);
+   const terminals=await page.request.get(base+'/api/terminals').then(r=>r.text()).catch(()=>null);
+   console.error('PTY_READY_DIAGNOSTIC',JSON.stringify({needle,output:output?.slice(-2000),notice:notice?.slice(-1000),terminals:terminals?.slice(-2000)}));
+   throw error;
+  }
+ };
+ // First PowerShell startup on a cold Windows runner may take longer than reconnect.
+ await waitText('PS ',60000);
  await page.locator('.xterm-helper-textarea').focus();
  await page.keyboard.type("Write-Output ('AXIOM_'+'RUST_WEBVIEW_OK')");await page.keyboard.press('Enter');await waitText('AXIOM_RUST_WEBVIEW_OK');
  await page.keyboard.type("Write-Output ([string][char]0x4E2D + [string][char]0x6587)");await page.keyboard.press('Enter');await waitText('\u4e2d\u6587');
