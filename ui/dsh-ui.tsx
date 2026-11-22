@@ -8,6 +8,7 @@ import workspaceCss from "../vendor/dsh/sidebar/WorkspaceBrowser.module.css";
 import { maskCredentials } from "./credential-mask.ts";
 import "../vendor/dsh/theme/base.css";
 import "../vendor/dsh/theme/design-platform.css";
+import "../vendor/dsh/theme/gradient-shadow-text.css";
 import "../vendor/dsh/theme/scrollbar.css";
 import "../vendor/dsh/theme/focus.css";
 

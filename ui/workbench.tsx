@@ -1,6 +1,15 @@
-import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { createPortal } from "react-dom";
 import { decodeRequest } from "../src/interaction-protocol.mjs";
-import { JobDetails, TeamOverview } from "./harness-features.tsx";
+import { useModalLayer } from "../vendor/dsh/primitives/useModalLayer.ts";
+import { JobDetails, TeamOverview, TraceLedger } from "./harness-features.tsx";
 import { api, dirtyTabs, errorBox, Header, msg } from "./panel-shared.tsx";
 import {
   appendDraft,
@@ -12,13 +21,14 @@ import {
   useProjection,
   useProjectionField,
 } from "./projection.ts";
-import { layoutActions, useLayout } from "./shell-layout.ts";
+import { layoutActions, layoutState, useLayout } from "./shell-layout.ts";
 import { StructuredDialog } from "./structured-dialog.tsx";
 
 const Editor = React.lazy(() => import("./editor.tsx"));
 const TerminalView = React.lazy(() => import("./terminal.tsx"));
 
 import {
+  Activity,
   ArrowLeft,
   ArrowRight,
   Check,
@@ -27,8 +37,7 @@ import {
   Folder,
   GitCompare,
   Globe,
-  Maximize2,
-  Minimize2,
+  PanelLeft,
   Paperclip,
   Play,
   Plus,
@@ -51,6 +60,7 @@ import { Modal } from "../vendor/dsh/primitives/Modal.tsx";
 import "@xterm/xterm/css/xterm.css";
 import "../vendor/dsh/primitives/DiffBlock.module.css";
 import "../vendor/dsh/primitives/CodeCard.module.css";
+import type { CSSProperties } from "react";
 import pluginCss from "../vendor/dsh/capabilities/PluginManagerPage.module.css";
 import questionCss from "../vendor/dsh/capabilities/QuestionComposer.module.css";
 import guideCss from "../vendor/dsh/guide/GuideBody.module.css";
@@ -59,6 +69,7 @@ import browserCss from "../vendor/dsh/sidebar/Browser.module.css";
 import filesCss from "../vendor/dsh/sidebar/FilesBody.module.css";
 import settingsCss from "../vendor/dsh/sidebar/SettingsRoot.module.css";
 import sidebarCss from "../vendor/dsh/sidebar/SidebarRoot.module.css";
+import panelCss from "../vendor/dsh/sidebar-right/SidebarRight.module.css";
 
 const jobAction = (action: string, value: unknown) => api("job-action", { action, value });
 const icons = {
@@ -71,6 +82,7 @@ const icons = {
   jobs: Workflow,
   browser: Globe,
   guide: Plus,
+  trajectory: Activity,
 };
 const names = {
   files: "文件",
@@ -81,6 +93,7 @@ const names = {
   jobs: "任务与计划",
   browser: "浏览器",
   guide: "工作台",
+  trajectory: "执行轨迹",
 };
 const labels = {
   emptyPane: "打开工作台功能",
@@ -105,17 +118,45 @@ const make = (id: any) => ({
   title: "工作台",
   contentId: id,
 });
-const controller = new DockController({
-  makeInitialTab: make,
-  makePaneTab: make,
-});
-controller.setExpanded(true);
-const open = (kind: string, title?: string, id?: string) =>
-  controller.openContent({
+/** Each Pi session keeps an independent right dock, matching Harness SidebarRight. */
+const controllers = new Map<string, DockController>();
+function controllerFor(sessionId?: string) {
+  const id = sessionId ?? "";
+  let controller = controllers.get(id);
+  if (!controller && id) {
+    // The first session can arrive after the shell renders. Keep tabs and
+    // mounted terminal processes when that anonymous layout gains an owner.
+    controller = controllers.get("");
+    if (controller) controllers.delete("");
+  }
+  if (!controller) {
+    controller = new DockController({ makeInitialTab: make, makePaneTab: make });
+    controller.setExpanded(false);
+  }
+  controllers.set(id, controller);
+  return controller;
+}
+const activeController = () => controllerFor(getSnapshot().state?.sessionId);
+export function forgetRightbarSession(sessionId: string) {
+  controllers.delete(sessionId);
+}
+export function toggleRightbar() {
+  const next = !layoutState().workbenchOpen;
+  activeController().setExpanded(next);
+  if (next) layoutActions.showWorkbench();
+  else layoutActions.hideWorkbench();
+}
+const open = (kind: string, title?: string, id?: string) => {
+  if (kind === "settings") {
+    openSettings();
+    return;
+  }
+  activeController().openContent({
     kind,
     title: title || names[kind as keyof typeof names] || kind,
     contentId: id || (["terminal", "browser"].includes(kind) ? crypto.randomUUID() : kind),
   });
+};
 const insert = appendDraft;
 function useLoad(path: string, initial: any) {
   const [value, setValue] = useState(initial),
@@ -541,7 +582,7 @@ const settingsSections = {
   models: "模型提供商",
   prompt: "内置提示词",
 } as const;
-function SettingsView() {
+function SettingsView({ onClose }: { onClose?: () => void } = {}) {
   const { value, error, load, setError } = useLoad("settings", null);
   const models = useProjectionField("models");
   const levels = useProjectionField("levels");
@@ -566,12 +607,17 @@ function SettingsView() {
     }
   }
   return (
-    <div className="wb-panel">
+    <div className="wb-panel axiom-settings-view">
       <Header>
-        <strong>Pi 设置</strong>
+        <strong>设置</strong>
         <Button size="sm" onClick={() => void load()}>
           刷新
         </Button>
+        {onClose && (
+          <Button size="sm" title="关闭设置" aria-label="关闭设置" onClick={onClose}>
+            ×
+          </Button>
+        )}
       </Header>
       <nav className="settings-sections" aria-label="设置分类">
         {(Object.keys(settingsSections) as (keyof typeof settingsSections)[]).map((key) => (
@@ -1217,7 +1263,13 @@ function Guide() {
         .map(([kind, label]) => {
           const Icon = icons[kind as keyof typeof icons];
           return (
-            <button type="button" key={kind} className={guideCss.entry} onClick={() => open(kind)}>
+            <button
+              type="button"
+              key={kind}
+              className={guideCss.entry}
+              title={label}
+              onClick={() => open(kind)}
+            >
               <span className={guideCss.entryIcon}>
                 <Icon size={22} />
               </span>
@@ -1231,6 +1283,20 @@ function Guide() {
   );
 }
 
+function Trajectory() {
+  const tools = useProjectionField("tools");
+  const busy = useProjectionField("busy");
+  return (
+    <div className="wb-panel axiom-trajectory-pane">
+      <div className="wb-bar">
+        <strong>执行轨迹</strong>
+      </div>
+      <div className="wb-scroll" id="trace">
+        <TraceLedger tools={tools} busy={busy} />
+      </div>
+    </div>
+  );
+}
 function renderTab(tab: any) {
   switch (tab.kind) {
     case "files":
@@ -1249,12 +1315,13 @@ function renderTab(tab: any) {
           <TerminalView />
         </React.Suspense>
       );
-    case "settings":
-      return <SettingsView />;
+
     case "resources":
       return <Resources />;
     case "jobs":
       return <Jobs />;
+    case "trajectory":
+      return <Trajectory />;
     case "browser":
       return <BrowserView />;
     default:
@@ -1263,6 +1330,8 @@ function renderTab(tab: any) {
 }
 export function SidebarPanels() {
   const { collapsed, workbenchOpen } = useLayout();
+  const sessionId = useProjectionField("state")?.sessionId;
+  const controller = controllerFor(sessionId);
   const { state } = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const pane = state.nodes[state.activePaneId];
   const activeTab = pane?.kind === "pane" && pane.activeTabId ? state.tabs[pane.activeTabId] : null;
@@ -1303,84 +1372,134 @@ export function SidebarPanels() {
     </div>
   );
 }
-export function Workbench() {
-  const snapshot = useSyncExternalStore(
-      controller.subscribe,
-      controller.getSnapshot,
-      controller.getSnapshot,
-    ),
-    [wide, setWide] = useState(false);
-  const proxy = useRef(
-    new Proxy(controller, {
-      get(target, key) {
-        if (key === "closeTab")
-          return (id: any) => {
-            const tab = target.getSnapshot().state.tabs[id];
-            if (tab && dirtyTabs.has(tab.contentId) && !window.confirm("关闭并丢弃未保存修改？"))
-              return;
-            target.closeTab(id);
-          };
-        const value = (target as any)[key];
-        return typeof value === "function" ? value.bind(target) : value;
-      },
-    }),
-  ).current;
-  function expand() {
-    const next = !wide;
-    setWide(next);
-    layoutActions.setWide(next);
-  }
+/** Original Harness SidebarRight fullscreen controls. */
+function FullscreenGlyph() {
   return (
-    <div className="wb-shell">
-      <div className="wb-launch">
-        <Button size="sm" title="文件" icon={<Folder size={16} />} onClick={() => open("files")} />
-        <Button
-          size="sm"
-          title="Git Diff"
-          icon={<GitCompare size={16} />}
-          onClick={() => open("diff")}
-        />
-        <Button
-          size="sm"
-          title="终端"
-          icon={<TerminalIcon size={16} />}
-          onClick={() => open("terminal")}
-        />
-        <Button
-          size="sm"
-          title="浏览器"
-          icon={<Globe size={16} />}
-          onClick={() => open("browser")}
-        />
-        <Button
-          size="sm"
-          title="设置"
-          icon={<Settings size={16} />}
-          onClick={() => open("settings")}
-        />
-        <Button size="sm" title="任务" icon={<Workflow size={16} />} onClick={() => open("jobs")} />
-        <Button
-          size="sm"
-          title="资源"
-          icon={<Paperclip size={16} />}
-          onClick={() => open("resources")}
-        />
-        <Button
-          size="sm"
-          title="扩大工作台"
-          icon={wide ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-          onClick={expand}
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M2.33203 10.4054V13.1681C2.33229 13.444 2.55605 13.6681 2.83203 13.6681H5.49512V14.6681H2.83203C2.00376 14.6681 1.33229 13.9963 1.33203 13.1681V10.4054H2.33203ZM14.6689 13.1681C14.6687 13.996 13.9968 14.6676 13.1689 14.6681H10.4951V13.6681H13.1689C13.4445 13.6676 13.6687 13.4437 13.6689 13.1681V10.4054H14.6689V13.1681ZM13.1689 1.33118C13.9969 1.33163 14.6688 2.00315 14.6689 2.83118V5.4054H13.6689V2.83118C13.6688 2.55544 13.4446 2.33162 13.1689 2.33118H10.4951V1.33118H13.1689ZM5.49512 2.33118H2.83203C2.55598 2.33118 2.33218 2.55516 2.33203 2.83118V5.4054H1.33203V2.83118C1.33218 2.00288 2.00369 1.33118 2.83203 1.33118H5.49512V2.33118Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+/** Restore-from-fullscreen glyph from the shared product artwork. */
+function ExitFullscreenGlyph() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M9 2.5V6C9 6.26522 9.10536 6.51957 9.29289 6.70711C9.48043 6.89464 9.73478 7 10 7H13.5"
+        stroke="currentColor"
+      />
+      <path
+        d="M7 13.5V10C7 9.73478 6.89464 9.48043 6.70711 9.29289C6.51957 9.10536 6.26522 9 6 9H2.5"
+        stroke="currentColor"
+      />
+    </svg>
+  );
+}
+export function Workbench() {
+  const sessionId = useProjectionField("state")?.sessionId;
+  const controller = controllerFor(sessionId);
+  const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
+  const layout = useLayout();
+  const proxy = useMemo(
+    () =>
+      new Proxy(controller, {
+        get(target, key) {
+          if (key === "closeTab")
+            return (id: any) => {
+              const tab = target.getSnapshot().state.tabs[id];
+              if (tab && dirtyTabs.has(tab.contentId) && !window.confirm("关闭并丢弃未保存修改？"))
+                return;
+              target.closeTab(id);
+            };
+          const value = (target as any)[key];
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      }),
+    [controller],
+  );
+  useEffect(() => {
+    const surface = controller.getSnapshot().state;
+    layoutActions.setFullscreen(surface.mode === "fullscreen");
+    if (surface.expanded) layoutActions.showWorkbench();
+    else layoutActions.hideWorkbench();
+  }, [controller]);
+  function toggleFullscreen() {
+    const next = !layout.fullscreen;
+    controller.setMode(next ? "fullscreen" : "push");
+    layoutActions.setFullscreen(next);
+  }
+  const fullscreen = layout.fullscreen || layout.width < 768;
+  const shown = layout.workbenchOpen;
+  const width = fullscreen ? "calc(100vw + 1px)" : "var(--dsh-rightbar-width)";
+  return (
+    <div
+      className={panelCss.panel + " axiom-sidebar-right-panel"}
+      style={{ width, "--dsh-sidebar-width": width } as CSSProperties}
+      data-sidebar-right-panel={fullscreen ? "fullscreen" : "push"}
+      data-sidebar-right-open={shown || undefined}
+      aria-hidden={(!shown && snapshot.state.floats.length === 0) || undefined}
+    >
+      <div className={panelCss.panelBody}>
+        <DockLayout
+          state={snapshot.state}
+          canSplit={snapshot.canSplit}
+          canAddTab={(paneId) => {
+            const pane = snapshot.state.nodes[paneId];
+            return (
+              pane?.kind === "pane" &&
+              !pane.tabs.some((id) => snapshot.state.tabs[id]?.kind === "guide")
+            );
+          }}
+          intents={proxy}
+          labels={labels}
+          dropZones="horizontal"
+          keepMounted={() => true}
+          renderTab={(tab) => <div className={panelCss.tabBody}>{renderTab(tab)}</div>}
+          renderTabTitle={(tab) => {
+            const Icon = icons[tab.kind as keyof typeof icons];
+            return (
+              <span className={panelCss.tabTitle}>
+                {tab.kind === "guide" ? (
+                  <CompassGlyph size={14} className={guideCss.titleIcon} />
+                ) : Icon ? (
+                  <Icon size={14} aria-hidden="true" />
+                ) : null}
+                <span>{tab.title}</span>
+              </span>
+            );
+          }}
+          chrome={
+            <div className="axiom-rightbar-chrome">
+              <button
+                type="button"
+                className={panelCss.iconButton}
+                title={layout.fullscreen ? "退出全屏" : "全屏展开"}
+                aria-label={layout.fullscreen ? "退出全屏" : "全屏展开"}
+                data-sidebar-right-mode={layout.fullscreen ? "push" : "fullscreen"}
+                disabled={layout.width < 768}
+                onClick={toggleFullscreen}
+              >
+                {layout.fullscreen ? <ExitFullscreenGlyph /> : <FullscreenGlyph />}
+              </button>
+              <button
+                type="button"
+                id="rightbar-collapse"
+                className={panelCss.iconButton}
+                title="收起右侧栏"
+                aria-label="收起右侧栏"
+                data-sidebar-right-toggle
+                onClick={toggleRightbar}
+              >
+                <PanelLeft className={panelCss.collapseGlyph} size={16} />
+              </button>
+            </div>
+          }
         />
       </div>
-      <DockLayout
-        state={snapshot.state}
-        canSplit={snapshot.canSplit}
-        intents={proxy}
-        labels={labels}
-        dropZones="horizontal"
-        keepMounted={() => true}
-        renderTab={renderTab}
-      />
     </div>
   );
 }
@@ -1485,10 +1604,61 @@ function PlainDialog({ dialog }: { dialog: Dialog }) {
 }
 
 export function openDelivery(path: string) {
+  activeController().setExpanded(true);
   layoutActions.showWorkbench();
   open("editor", path.split("/").at(-1), path);
 }
+let settingsOpen = false;
+const settingsListeners = new Set<() => void>();
+const subscribeSettings = (listener: () => void) => {
+  settingsListeners.add(listener);
+  return () => {
+    settingsListeners.delete(listener);
+  };
+};
+const settingsSnapshot = () => settingsOpen;
+export function openSettings() {
+  settingsOpen = true;
+  layoutActions.closeDrawer();
+  for (const listener of settingsListeners) listener();
+}
+function closeSettings() {
+  settingsOpen = false;
+  for (const listener of settingsListeners) listener();
+}
+export function SettingsOverlay() {
+  const shown = useSyncExternalStore(subscribeSettings, settingsSnapshot);
+  const root = useRef<HTMLDivElement>(null);
+  useModalLayer(root, shown, closeSettings);
+  if (!shown) return null;
+  return createPortal(
+    <div className="axiom-settings-overlay">
+      <button
+        type="button"
+        className="axiom-settings-backdrop"
+        aria-label="关闭设置背景"
+        onClick={closeSettings}
+      />
+      <section
+        ref={root}
+        role="dialog"
+        aria-modal="true"
+        aria-label="设置"
+        className="axiom-settings-dialog"
+        tabIndex={-1}
+      >
+        <SettingsView onClose={closeSettings} />
+      </section>
+    </div>,
+    document.body,
+  );
+}
 export function openPanel(kind: string) {
+  if (kind === "settings") {
+    openSettings();
+    return;
+  }
+  activeController().setExpanded(true);
   layoutActions.showWorkbench();
   open(kind);
 }

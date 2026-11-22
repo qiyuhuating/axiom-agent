@@ -30,7 +30,6 @@ button:disabled,select:disabled{opacity:.45;cursor:default;}
 button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--dsw-alias-border-selected);outline-offset:2px;}
 .sidebar {min-width:0;min-height:0;border-right:.5px solid var(--border);overflow:hidden;}
 
-.mark{display:grid;place-items:center;width:26px;height:26px;flex:none;background:var(--accent);color:var(--dsw-alias-label-primary-foreground);font-size:15px;border-radius:8px;font-weight:600;}
 .brand-name{white-space:nowrap;flex:1;}
 #sidebar-toggle,#sidebar-open,#theme-toggle{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;flex:none;padding:0;border:0;color:var(--muted);}
 #sidebar-open{display:none;}
@@ -81,11 +80,11 @@ main:has(.welcome) .composer{flex:1 1 0;}
 .actions button,.actions select{height:32px;padding:0 8px;min-width:0;border:0;color:var(--muted);}
 .actions select{max-width:min(155px,100%);text-overflow:ellipsis;}
 .action-spacer{flex:1;}
-#send,#stop,#attach-button,#show-workbench{display:inline-flex;align-items:center;justify-content:center;gap:6px;}
+#show-workbench{display:inline-flex;align-items:center;justify-content:center;}
 #send,#stop{width:34px;padding:0;border-radius:50%;}
 #send span,#stop span,#attach-button span{display:none;}
-#send{background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-foreground);}
-#send:hover:not(:disabled){background:var(--dsw-alias-button-primary-hover);}
+#send{background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-on-color);}
+
 #stop:disabled{display:none;}
 .composer small{display:block;text-align:center;margin:6px 0;font-size:11px;color:var(--dsw-alias-label-tertiary);}
 #error{color:var(--danger);white-space:pre-wrap;font-size:13px;}
@@ -109,8 +108,6 @@ main:has(.welcome) .composer{flex:1 1 0;}
 .inspector{min-height:0;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:var(--bg);border-left:.5px solid var(--border);}
 body:not(.workbench-open) .inspector{display:none;}
 #workbench,.wb-shell{display:flex;flex:1;flex-direction:column;min-width:0;min-height:0;overflow:hidden;}
-.wb-launch{display:flex;align-items:center;flex-wrap:wrap;gap:2px;padding:5px 8px;border-bottom:.5px solid var(--border);}
-.wb-launch button{padding:0 7px;}
 .wb-panel{display:flex;flex-direction:column;min-height:0;min-width:0;height:100%;overflow:hidden;}
 .wb-bar{display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:8px;border-bottom:.5px solid var(--border);min-width:0;}
 .wb-bar strong{flex:1;min-width:0;font-size:12px;font-weight:500;}
@@ -139,15 +136,12 @@ body:not(.workbench-open) .inspector{display:none;}
 .patch-add{color:var(--dsw-alias-state-success-primary);background:var(--dsw-static-green-500-a08);}
 .patch-del{color:var(--danger);background:var(--dsw-static-red-400-a12);}
 .patch-meta{color:var(--muted);}
-.trace-panel{border-top:.5px solid var(--border);max-height:27%;overflow:auto;padding:9px 12px;flex-shrink:0;}
-#trace-heading{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);font-weight:500;margin:0 0 7px;}
 details{border:0;padding:4px 0;margin-bottom:4px;}
 summary{cursor:pointer;color:var(--muted);overflow-wrap:anywhere;}
 pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:260px;overflow:auto;}
 #wb-notice{position:fixed;right:14px;bottom:12px;z-index:900;background:var(--surface);border:.5px solid var(--border);box-shadow:var(--dsw-elevation-menu);border-radius:12px;padding:8px 12px;max-width:55vw;overflow-wrap:anywhere;}
 .danger{background:var(--danger)!important;color:white!important;}
 .delete-session-name{overflow-wrap:anywhere;background:var(--dsw-alias-bg-module-platform);border-radius:8px;padding:10px;}
-body.workbench-overlay .inspector{position:fixed;right:0;top:50px;bottom:0;width:min(95vw,650px);z-index:40;box-shadow:var(--dsw-elevation-menu);}
 @media(max-width:767px){
   body{grid-template-columns:minmax(0,1fr);}
   .sidebar{display:none;}
@@ -186,7 +180,6 @@ body.sidebar-collapsed #sidebar-settings span,body.sidebar-collapsed #sidebar-pa
 #composer-menu{position:absolute;inset:0;pointer-events:none;}
 #composer-menu>div{pointer-events:auto;}
 
-#root{display:contents;}
 .sidebar-backdrop{display:none;}
 @media(max-width:767px){
   .sidebar-backdrop{display:block;position:fixed;inset:0;z-index:49;border:0;border-radius:0;background:rgb(0 0 0 / .25);}
@@ -202,3 +195,400 @@ body.sidebar-collapsed #sidebar-settings span,body.sidebar-collapsed #sidebar-pa
 .draft-editor { border: 0; padding: 0; margin: 0; min-width: 0; }
 
 .quote-message{font-size:12px;color:var(--muted);padding:3px 8px;opacity:0;}article:hover .quote-message,.quote-message:focus-visible{opacity:1;}
+
+/* DeepSeek Harness AppFrame / ConversationRoot host geometry.
+   Source geometry: vendor/dsh/layout/AppFrame.module.css and
+   vendor/dsh/conversation/ConversationRoot.module.css. */
+body { display:block; }
+#root { display:block; height:100%; min-height:0; }
+.axiom-frame {
+  display:grid;
+  grid-template-columns:var(--sidebar-width,280px) minmax(0,1fr) var(--trace-width,0px);
+  grid-template-rows:minmax(0,1fr);
+  width:100%;
+  height:100%;
+  overflow:hidden;
+  background:var(--dsw-alias-bg-base);
+}
+.axiom-frame>.sidebar { grid-column:1; grid-row:1; border-color:var(--dsw-alias-border-l3); }
+.axiom-frame>.inspector { grid-column:3; grid-row:1; }
+.axiom-frame .sidebar .brand {
+  gap:6px; flex:none; height:60px;
+  padding:8px 0 8px 8px;
+}
+.axiom-frame .sidebar .brand-name {
+  font-size:18px; font-weight:600; letter-spacing:.02em;
+  color:var(--dsw-alias-label-primary);
+}
+.axiom-frame .sidebar footer { gap:8px; }
+.axiom-frame #sidebar-panels { flex:none; max-height:36%; overflow:auto; margin-bottom:8px; }
+.axiom-frame .sidebar .panelList { gap:2px; }
+.axiom-frame #sessions { overflow:auto; }
+.axiom-frame main { flex:1; min-height:0; min-width:0; }
+.axiom-frame main>header { box-sizing:border-box; }
+.axiom-frame main>header .controls { justify-content:flex-end; gap:6px; }
+.axiom-frame main>header .controls button { border-radius:8px; min-width:28px; height:28px; padding:4px 6px; }
+.axiom-frame main>header .controls #status { padding-left:4px; }
+.axiom-conversation-body { flex:1; min-height:0; display:flex; flex-direction:column; }
+.axiom-conversation-body #transcript {
+  width:100%; min-height:0; box-sizing:border-box;
+  padding:24px max(24px,calc((100% - var(--dsh-chat-content-width,800px))/2));
+}
+.axiom-conversation-body[data-phase='active'] #transcript {
+  flex:1 1 0;
+  overflow-y:auto;
+}
+.axiom-conversation-body[data-phase='hero'] {
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  padding:0 18px 36px;
+}
+main:has(.welcome) .axiom-conversation-body[data-phase='hero'] #transcript {
+  flex:none;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  min-height:0;
+  height:auto;
+  width:100%;
+  padding:0;
+  overflow:visible;
+}
+.axiom-conversation-body[data-phase='hero'] .welcome {
+  display:flex; align-items:center; justify-content:center;
+  gap:10px; margin-bottom:0;
+  width:100%; line-height:32px;
+  font-weight:500;
+  color:var(--dsw-alias-label-primary);
+}
+.axiom-conversation-body[data-phase='hero'] .welcome svg { flex:none; }
+.axiom-conversation-body .composer {
+  position:relative;
+  box-sizing:border-box;
+  flex:none;
+  align-self:center;
+  width:100%;
+  max-width:calc(var(--dsh-composer-card-max-width,764px) + 48px);
+  padding:0 24px 8px;
+}
+main:has(.welcome) .axiom-conversation-body[data-phase='hero'] .composer {
+  flex:none; width:100%; max-width:812px;
+  padding:0 24px 0;
+}
+.axiom-conversation-body .composer form {
+  box-sizing:border-box;
+  padding:8px 12px 10px;
+  width:100%;
+  max-width:none;
+  border-radius:var(--dsw-radius-panel);
+  background:var(--dsw-specific-input-major);
+  box-shadow:var(--dsw-elevation-soft);
+}
+
+.axiom-conversation-body .composer .axiom-hero-workspace {
+  padding-left:8px;
+  margin:3px 0 9px;
+}
+.axiom-conversation-body .composer .axiom-hero-workspace button {
+  font-size:13px; line-height:24px;
+}
+.axiom-conversation-body[data-phase='hero'] .composer small { display:none; }
+.axiom-conversation-body[data-phase='active'] .composer small { margin-bottom:0; }
+.axiom-conversation-body .composer .axiom-lexical-input {
+  max-height:336px;
+  min-height:72px;
+  line-height:24px;
+}
+.axiom-frame .inspector .trace-panel { display:none; }
+.axiom-frame .inspector #workbench { height:100%; }
+@media (max-width:1023px) {
+  .axiom-conversation-body #transcript { padding-inline:20px; }
+  .axiom-conversation-body .composer { padding-inline:16px; }
+}
+@media (max-width:767px) {
+  .axiom-frame { grid-template-columns:minmax(0,1fr); }
+  .axiom-frame>.sidebar { display:none; }
+  body.sidebar-drawer .axiom-frame>.sidebar {
+    display:flex; width:min(280px,85vw); position:fixed; inset:0 auto 0 0; z-index:50;
+  }
+  .axiom-frame>.inspector { display:none; }
+  body.workbench-overlay .axiom-frame>.inspector { display:flex; }
+  .axiom-frame main>header { padding-inline:12px; }
+  .axiom-conversation-body[data-phase='hero'] { padding-inline:12px; }
+  .axiom-conversation-body .composer { padding-inline:12px; }
+
+}
+@media (prefers-reduced-motion:reduce) {
+  .axiom-frame, .axiom-frame * { transition-duration:0s; }
+}
+
+/* Harness settings shell: full modal, separate from the right DockKit track. */
+.axiom-settings-overlay {position:fixed;inset:0;z-index:1200;display:grid;place-items:center;padding:12px;box-sizing:border-box;}
+.axiom-settings-backdrop {position:absolute;inset:0;background:color-mix(in srgb,var(--dsw-alias-bg-base) 60%,transparent);backdrop-filter:blur(6px);}
+.axiom-settings-dialog {
+  position:relative;
+  display:flex;flex-direction:column;overflow:hidden;
+  width:min(1472px,calc(100vw - 24px));height:min(920px,calc(100dvh - 24px));
+  border-radius:32px;
+  background:var(--dsw-alias-bg-base);
+  box-shadow:var(--dsw-elevation-menu);
+  border:.5px solid var(--dsw-alias-border-l3);
+}
+.axiom-settings-view {
+  display:grid!important;
+  grid-template-columns:264px minmax(0,1fr);
+  grid-template-rows:88px minmax(0,1fr);
+  height:100%;min-width:0;
+}
+.axiom-settings-view>.wb-bar {
+  grid-column:1/-1;grid-row:1;
+  padding:20px 32px;border:0;
+  background:transparent;
+  gap:12px;
+}
+.axiom-settings-view>.wb-bar strong {font-size:22px;font-weight:600;}
+.axiom-settings-view>.settings-sections {
+  grid-column:1;grid-row:2;
+  display:flex;flex-direction:column;
+  flex-wrap:nowrap;align-items:stretch;
+  gap:8px;overflow:auto;
+  padding:8px 16px 20px 24px;
+  border:0;
+}
+.axiom-settings-view>.settings-sections button {
+  text-align:left;display:flex;justify-content:flex-start;align-items:center;
+  min-height:46px;border-radius:12px;
+  padding:12px 14px;font-size:14px;
+  color:var(--dsw-alias-label-primary);
+}
+.axiom-settings-view>.settings-sections button[aria-pressed='true'] {
+  background:var(--dsw-alias-interactive-bg-hover);
+}
+.axiom-settings-view>.wb-scroll {
+  grid-column:2;grid-row:2;overflow:auto;
+  padding:0 36px 32px 24px;
+}
+.axiom-settings-view .settings-section {
+  width:100%;max-width:880px;margin-inline:auto;
+  padding:16px 0;gap:18px;
+}
+.axiom-settings-view .settings-section h4 {font-size:19px;font-weight:600;margin:4px 0 6px;}
+.axiom-settings-view .wb-form label {
+  font-size:14px;
+  color:var(--dsw-alias-label-secondary);
+}
+.axiom-settings-view .wb-form input,
+.axiom-settings-view .wb-form select,
+.axiom-settings-view .wb-form textarea {
+  background:var(--dsw-specific-input-major);
+  border:1px solid var(--dsw-alias-border-l2);
+  border-radius:12px;
+  min-height:42px;
+  font-size:14px;
+}
+.axiom-settings-view .wb-form button {min-height:36px;}
+.axiom-settings-view .wb-list-row {padding:12px 0;}
+@media(max-width:720px){
+  .axiom-settings-dialog {width:100vw;height:100dvh;border-radius:0;}
+  .axiom-settings-view {grid-template-columns:1fr;grid-template-rows:56px auto minmax(0,1fr);}
+  .axiom-settings-view>.wb-bar {grid-row:1;padding:12px 16px;}
+  .axiom-settings-view>.settings-sections {grid-column:1;grid-row:2;flex-direction:row;overflow-x:auto;padding:8px 12px;}
+  .axiom-settings-view>.settings-sections button {white-space:nowrap;min-height:36px;}
+  .axiom-settings-view>.wb-scroll {grid-column:1;grid-row:3;padding:0 16px 24px;}
+}
+
+.axiom-settings-backdrop{border:0;border-radius:0;cursor:default;padding:0;}
+
+/* Right Sidebar follows the upstream SidebarRight surface: DockKit's tab strip
+   is the whole panel header; presentation controls live in its chrome seat. */
+.axiom-frame {position:relative;}
+.axiom-frame>.inspector {
+  min-width:0;position:relative;
+  border-left:.5px solid var(--dsw-alias-border-l3);
+  background:var(--dsw-alias-bg-base);
+}
+.axiom-frame>.inspector #workbench,
+.axiom-frame>.inspector .wb-shell,
+.axiom-frame>.inspector [data-dockkit-surface] {height:100%;min-height:0;}
+.axiom-frame .axiom-rightbar-chrome {
+  display:flex;
+  align-items:center;
+  gap:4px;
+  height:28px;
+}
+.axiom-frame .axiom-rightbar-resize {
+  border:0;
+  background:transparent;
+  padding:0;
+  height:100%;
+  z-index:13;
+}
+.axiom-frame .axiom-rightbar-resize::after {
+  content:"";position:absolute;top:50%;left:50%;
+  width:4px;height:48px;border-radius:999px;
+  transform:translate(-50%,-50%);
+  background:var(--dsw-alias-border-l3);
+  opacity:0;transition:opacity 120ms ease;
+  pointer-events:none;
+}
+.axiom-frame .axiom-rightbar-resize:hover::after,
+.axiom-frame .axiom-rightbar-resize:focus-visible::after,
+.axiom-frame[data-resizing] .axiom-rightbar-resize::after {opacity:1;}
+.axiom-frame[data-resizing], .axiom-frame[data-resizing] .axiom-rightbar-resize {
+  transition:none;
+}
+.axiom-frame:not([data-resizing]) {transition:grid-template-columns 200ms var(--ds-ease-in-out);}
+body.workbench-overlay .axiom-frame>.inspector {
+  display:flex;
+  position:absolute;
+  inset:0 0 0 auto;
+  width:min(100vw,var(--dsh-rightbar-width));
+  z-index:20;
+  border-left:.5px solid var(--dsw-alias-border-l3);
+  background:var(--dsw-alias-bg-base);
+  box-shadow:var(--dsw-elevation-menu);
+}
+body.rightbar-fullscreen .axiom-frame>.inspector {
+  grid-column:1 / -1;
+  display:flex;
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  z-index:20;
+  border:0;
+  box-shadow:none;
+}
+.axiom-frame>.inspector[data-rightbar-mode='fullscreen'] .wb-shell {
+  width:100%;
+}
+@media(max-width:767px){
+  body.workbench-overlay .axiom-frame>.inspector,
+  body.rightbar-fullscreen .axiom-frame>.inspector {
+  grid-column:1 / -1;inset:0;width:100%;}
+}
+@media(prefers-reduced-motion:reduce){
+  .axiom-frame,.axiom-frame .axiom-rightbar-resize::after {transition:none!important;}
+}
+@media (max-width:767px) {
+  .axiom-frame > .axiom-center {grid-column:1;grid-row:1;}
+  .axiom-frame > .inspector {grid-column:1;grid-row:1;}
+}
+/* Original Harness message-row, assistant typography and toolbar composition. */
+.axiom-conversation-body[data-phase='active'] #transcript {
+  padding:16px 24px 28px;
+  container-type:inline-size;
+  overflow-x:clip;
+}
+.axiom-chat-column {
+  --dsh-chat-content-width:min(748px,100%);
+  width:min(100%,748px);
+  max-width:748px;
+  display:flex;
+  flex-direction:column;
+  margin:0 auto;
+  gap:12px;
+  min-width:0;
+}
+.axiom-chat-column .axiom-message {
+  width:100%;min-width:0;margin:0;padding:0;
+  font-size:var(--dsh-content-font-size,14px);line-height:24px;
+  color:var(--dsw-alias-label-primary);background:transparent;
+  border:0;border-radius:0;overflow-wrap:anywhere;white-space:normal;
+}
+.axiom-chat-column .axiom-message[data-chat-flow-kind='user'] {margin-top:12px;}
+.axiom-chat-column .axiom-message .markdown {font-size:14px;line-height:24px;}
+.axiom-chat-column .axiom-message .markdown p {margin:0;}
+.axiom-chat-column .axiom-message .markdown p+p {margin-top:16px;}
+.axiom-chat-column .axiom-message .markdown pre {font-size:12px;line-height:1.55;white-space:pre;}
+.axiom-chat-column .axiom-message .quote-message {font-size:0;line-height:1;}
+@media(max-width:767px) {
+  .axiom-conversation-body[data-phase='active'] #transcript {padding-inline:16px;}
+  .axiom-chat-column {width:100%;}
+}
+/* Pi model catalog adapter using upstream Harness ModelSelect geometry and tokens. */
+.axiom-conversation-body .composer form .axiom-input-controls .axiom-model-select {
+  display:flex;flex:0 1 auto;min-width:0;max-width:min(260px,45%);
+}
+.axiom-conversation-body .composer form .axiom-input-controls .axiom-model-select button#models {
+  min-width:0;max-width:100%;font-size:13px;height:28px;
+}
+.axiom-model-menu[data-menu-material] {
+  min-width:min(280px,calc(100vw - 24px));max-width:min(420px,calc(100vw - 24px));
+  background:var(--dsw-alias-bg-base);
+  border:.5px solid var(--dsw-alias-border-l2);
+  box-shadow:var(--dsw-elevation-prominent,0 12px 32px rgb(0 0 0 / .14));
+}
+.axiom-model-menu .axiom-model-back {
+  display:flex;align-items:center;gap:7px;width:100%;min-height:34px;
+  border:0;border-radius:var(--dsw-radius-md);background:transparent;
+  padding:6px 8px;color:var(--dsw-alias-label-secondary);text-align:left;font-size:13px;
+}
+.axiom-model-menu .axiom-model-back:hover {background:var(--dsw-alias-interactive-bg-hover);}
+.axiom-model-menu .axiom-model-search {
+  display:flex;align-items:center;gap:8px;margin:3px 4px 7px;padding:6px 8px;
+  border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-module-platform);
+}
+.axiom-model-menu .axiom-model-search input {
+  min-width:0;flex:1;width:100%;border:none;background:transparent;outline:none;
+  color:var(--dsw-alias-label-primary);font-size:13px;
+}
+.axiom-model-menu .axiom-model-groups {overflow-y:auto;min-height:0;max-height:300px;}
+.axiom-model-menu .axiom-model-provider {
+  position:sticky;top:0;z-index:1;padding:8px 10px 5px;
+  font-size:11px;font-weight:600;line-height:16px;
+  color:var(--dsw-alias-label-tertiary);background:var(--dsw-specific-menu);
+}
+.axiom-model-menu .axiom-model-option {width:100%;}
+@media(max-width:767px){
+  .axiom-conversation-body .composer form .axiom-input-controls .axiom-model-select {max-width:min(190px,50%);}
+  .axiom-model-menu {max-height:min(360px,calc(100dvh - 60px));}
+}
+.axiom-model-spinner {animation:axiom-model-rotation 700ms linear infinite;}
+@keyframes axiom-model-rotation {to{transform:rotate(360deg);}}
+@media(prefers-reduced-motion:reduce){.axiom-model-spinner{animation:none;}}
+/* Upstream SidebarRight panel hosts the DockKit surface even while collapsed.
+   The zero-width frame track remains; the dock hosts slide off the right edge. */
+body:not(.workbench-open) .axiom-frame > .inspector {display:flex;pointer-events:none;}
+.axiom-frame > .inspector {overflow:visible;border-left:0;background:transparent;}
+.axiom-frame > .inspector #workbench {
+  position:relative;overflow:visible;min-width:0;min-height:0;
+}
+.axiom-frame .axiom-sidebar-right-panel {pointer-events:none;}
+.axiom-frame .axiom-sidebar-right-panel[data-sidebar-right-open] > div {pointer-events:auto;}
+.axiom-frame .axiom-sidebar-right-panel [data-dockkit-float] {pointer-events:auto;}
+.axiom-frame .axiom-sidebar-right-panel:not([data-sidebar-right-open]) > div {pointer-events:none;}
+.axiom-frame .axiom-sidebar-right-panel[data-sidebar-right-panel='fullscreen'] {
+  --dsh-dockkit-dock-layer:40;
+}
+/* Pi actions occupy the original Harness InputBar row / tools / trailing seats. */
+.axiom-conversation-body .composer form .axiom-input-controls {
+  flex-wrap:wrap;
+  gap:12px;
+}
+.axiom-conversation-body .composer form .axiom-input-controls #queue-mode {
+  max-width:155px;
+}
+.axiom-conversation-body .composer form .axiom-input-controls .axiom-model-select {
+  flex-shrink:1;
+}
+/* Harness composer mode slot: Pi plan/goal actions share the toolbar, no duplicate card. */
+.axiom-conversation-body .composer form .axiom-input-mode {
+  display:flex;min-width:0;max-width:min(260px,35vw);
+}
+.axiom-conversation-body .composer form .axiom-input-mode > div {
+  flex-wrap:nowrap;min-width:0;gap:6px;
+}
+.axiom-conversation-body .composer form .axiom-input-mode [class*="objective"] {
+  min-width:0;max-width:112px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.axiom-conversation-body .composer form .axiom-input-controls [class*="modes"] {
+  min-width:0;
+}
+.axiom-conversation-body .composer [data-composer-dock] {
+  width:100%;max-width:var(--dsh-composer-card-max-width,764px);
+}
+@media(max-width:767px){
+  .axiom-conversation-body .composer form .axiom-input-mode {max-width:min(220px,45vw);}
+}
