@@ -23,12 +23,19 @@ export function RightbarResizeHandle() {
     nextWidth.current = null;
     scheduled.current = null;
   };
-  const end = () => {
-    if (!gesture.current) return;
-    if (scheduled.current !== null) cancelAnimationFrame(scheduled.current);
-    flush();
-    layoutActions.setRightbarWidth(layoutState().rightbarWidth ?? gesture.current.width);
+  const end = (commit: boolean) => {
+    const active = gesture.current;
+    if (!active) return;
     gesture.current = null;
+    if (scheduled.current !== null) cancelAnimationFrame(scheduled.current);
+    scheduled.current = null;
+    if (commit) {
+      flush();
+      layoutActions.setRightbarWidth(layoutState().rightbarWidth ?? active.width);
+    } else {
+      nextWidth.current = null;
+      layoutActions.setRightbarWidth(active.width, false);
+    }
     layoutActions.setResizing(false);
   };
   useEffect(
@@ -54,8 +61,9 @@ export function RightbarResizeHandle() {
       style={{ left: layout.width - columns.rightbar }}
       onPointerDown={(event) => {
         if (event.button !== 0 || gesture.current) return;
-        gesture.current = { pointer: event.pointerId, x: event.clientX, width: columns.rightbar };
+        event.preventDefault();
         event.currentTarget.setPointerCapture(event.pointerId);
+        gesture.current = { pointer: event.pointerId, x: event.clientX, width: columns.rightbar };
         layoutActions.setResizing(true);
       }}
       onPointerMove={(event) => {
@@ -67,10 +75,16 @@ export function RightbarResizeHandle() {
       onPointerUp={(event) => {
         if (gesture.current?.pointer !== event.pointerId) return;
         nextWidth.current = gesture.current.width - (event.clientX - gesture.current.x);
-        end();
+        end(true);
+        if (event.currentTarget.hasPointerCapture(event.pointerId))
+          event.currentTarget.releasePointerCapture(event.pointerId);
       }}
-      onPointerCancel={end}
-      onLostPointerCapture={end}
+      onPointerCancel={(event) => {
+        if (gesture.current?.pointer === event.pointerId) end(false);
+      }}
+      onLostPointerCapture={(event) => {
+        if (gesture.current?.pointer === event.pointerId) end(false);
+      }}
       onKeyDown={(event) => {
         if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
         event.preventDefault();
