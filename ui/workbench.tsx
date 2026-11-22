@@ -123,11 +123,17 @@ const controllers = new Map<string, DockController>();
 function controllerFor(sessionId?: string) {
   const id = sessionId ?? "";
   let controller = controllers.get(id);
+  if (!controller && id) {
+    // The first session can arrive after the shell renders. Keep tabs and
+    // mounted terminal processes when that anonymous layout gains an owner.
+    controller = controllers.get("");
+    if (controller) controllers.delete("");
+  }
   if (!controller) {
     controller = new DockController({ makeInitialTab: make, makePaneTab: make });
     controller.setExpanded(false);
-    controllers.set(id, controller);
   }
+  controllers.set(id, controller);
   return controller;
 }
 const activeController = () => controllerFor(getSnapshot().state?.sessionId);
@@ -1439,7 +1445,6 @@ export function Workbench() {
     >
       <div className={panelCss.panelBody}>
         <DockLayout
-          key={sessionId ?? "no-session"}
           state={snapshot.state}
           canSplit={snapshot.canSplit}
           canAddTab={(paneId) => {
