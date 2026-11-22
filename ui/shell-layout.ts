@@ -70,6 +70,9 @@ export const layoutActions = {
   showWorkbench() {
     set({ workbenchOpen: true, drawer: false });
   },
+  hideWorkbench() {
+    set({ workbenchOpen: false });
+  },
   toggleWorkbench() {
     set({ workbenchOpen: !state.workbenchOpen });
   },

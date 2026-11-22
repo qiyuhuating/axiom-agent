@@ -438,18 +438,6 @@ main:has(.welcome) .axiom-conversation-body[data-phase='hero'] .composer {
   gap:4px;
   height:28px;
 }
-.axiom-frame .axiom-rightbar-chrome button {
-  width:28px;height:28px;
-  display:inline-flex;align-items:center;justify-content:center;
-  padding:0;
-  background:transparent;
-  color:var(--dsw-alias-label-secondary);
-  border:0;border-radius:var(--dsw-radius-sm);
-}
-.axiom-frame .axiom-rightbar-chrome button:hover:not(:disabled) {
-  background:var(--dsw-alias-interactive-bg-hover);
-}
-.axiom-frame .axiom-rightbar-chrome button:disabled {opacity:.4;}
 .axiom-frame .axiom-rightbar-resize {
   border:0;
   background:transparent;
@@ -581,3 +569,17 @@ body.rightbar-fullscreen .axiom-frame>.inspector {
 .axiom-model-spinner {animation:axiom-model-rotation 700ms linear infinite;}
 @keyframes axiom-model-rotation {to{transform:rotate(360deg);}}
 @media(prefers-reduced-motion:reduce){.axiom-model-spinner{animation:none;}}
+/* Upstream SidebarRight panel hosts the DockKit surface even while collapsed.
+   The zero-width frame track remains; the dock hosts slide off the right edge. */
+body:not(.workbench-open) .axiom-frame > .inspector {display:flex;pointer-events:none;}
+.axiom-frame > .inspector {overflow:visible;border-left:0;background:transparent;}
+.axiom-frame > .inspector #workbench {
+  position:relative;overflow:visible;min-width:0;min-height:0;
+}
+.axiom-frame .axiom-sidebar-right-panel {pointer-events:none;}
+.axiom-frame .axiom-sidebar-right-panel[data-sidebar-right-open] > div {pointer-events:auto;}
+.axiom-frame .axiom-sidebar-right-panel [data-dockkit-float] {pointer-events:auto;}
+.axiom-frame .axiom-sidebar-right-panel:not([data-sidebar-right-open]) > div {pointer-events:none;}
+.axiom-frame .axiom-sidebar-right-panel[data-sidebar-right-panel='fullscreen'] {
+  --dsh-dockkit-dock-layer:40;
+}

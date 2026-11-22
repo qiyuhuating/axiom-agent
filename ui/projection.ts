@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { api } from "./panel-shared.tsx";
+import { api, dirtyTabs } from "./panel-shared.tsx";
 export type Dialog = {
   id: string;
   method: string;
@@ -356,6 +356,19 @@ export async function loadOptions() {
   if (snapshot.state?.sessionId === state.sessionId) update({ models, levels, state });
 }
 export async function changeSession(kind: string, value?: unknown) {
+  const current = snapshot.state?.sessionId;
+  const leaving =
+    kind === "new" ||
+    kind === "fork" ||
+    (kind === "switch" && value !== current) ||
+    (kind === "delete" && value === current);
+  if (
+    leaving &&
+    dirtyTabs.size > 0 &&
+    !window.confirm("有 " + dirtyTabs.size + " 个文件未保存。离开当前会话将丢弃这些编辑，继续？")
+  ) {
+    throw Error("已取消会话切换，未保存修改仍然保留");
+  }
   if (
     !snapshot.connected ||
     snapshot.syncFailed ||

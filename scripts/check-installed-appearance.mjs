@@ -106,6 +106,7 @@ await darkModelMenu.waitFor({state:"detached"});
  await page.locator("#trace").waitFor();
  await capture(page,"trajectory.png");
  await page.locator("#rightbar-collapse").click();
+ await page.waitForFunction(()=>getComputedStyle(document.querySelector('.inspector [data-dockkit-host="dock"]')).visibility==="hidden",null,{timeout:1500});
  await page.locator('#sidebar-panels').getByRole('button',{name:'文件',exact:true}).click();
  await page.getByTitle('刷新文件',{exact:true}).waitFor();
  await capture(page,'files.png');
@@ -289,5 +290,66 @@ await darkModelMenu.waitFor({state:"detached"});
  await page.locator("#rightbar-collapse").click();
  await page.setViewportSize(viewport);
  await page.waitForFunction(width=>innerWidth===width,viewport.width);
- assert.deepEqual(errors,[]);console.log("HARNESS_UI_RENDER_PASS",JSON.stringify(a));
+ // Session-scoped right tabs: fake only snapshot and session mutations in the isolated browser.
+ const baseSnapshot=await page.evaluate(()=>fetch("/api/snapshot").then(response=>response.json()));
+ const baseState=baseSnapshot.state;
+ const identities=[
+  {id:"rightbar-fixture-a",name:"Rightbar fixture A"},
+  {id:"rightbar-fixture-b",name:"Rightbar fixture B"}
+ ];
+ let selectedSession=identities[0].id;
+ const sessionState=()=>({...baseState,sessionId:selectedSession});
+ await page.route("**/api/snapshot",route=>route.fulfill({json:{
+  ...baseSnapshot,state:sessionState(),sessions:identities,messages:[],dialogs:[],
+ }}));
+ await page.route("**/api/state",route=>route.fulfill({json:sessionState()}));
+ await page.route("**/api/action",route=>{
+  const request=route.request().postDataJSON();
+  if(request.action==="new"||request.action==="switch"){
+   selectedSession=request.action==="new"?identities[1].id:request.value;
+   return route.fulfill({json:{}});
+  }
+  return route.continue();
+ });
+ await page.reload();
+ await page.waitForFunction(()=>document.querySelector("#status")?.textContent==="就绪");
+ const tabs=()=>page.locator(".inspector [data-dockkit-tab]").allTextContents();
+ await page.locator("#sidebar-panels").getByRole("button",{name:"文件",exact:true}).click();
+ await page.locator(".inspector").getByTitle("刷新文件",{exact:true}).waitFor();
+ assert.ok((await tabs()).some(label=>label.includes("文件")),"A must own files tab");
+ await capture(page,"rightbar-session-a.png");
+ await page.locator("#new").click();
+ await page.locator("#show-workbench").waitFor();
+ await page.locator("#show-workbench").click();
+ await page.locator(".inspector").getByTitle("终端",{exact:true}).waitFor();
+ assert.ok(!(await tabs()).some(label=>label.includes("文件")),"B must not inherit A files tab");
+ await page.locator("#sidebar-panels").getByRole("button",{name:"终端",exact:true}).click();
+ await page.locator(".inspector [data-dockkit-tab]").filter({hasText:"终端"}).first().waitFor();
+ await capture(page,"rightbar-session-b.png");
+ await page.locator("#sessions .session-row").filter({hasText:identities[0].name}).locator(".session-select").click();
+ await page.locator(".inspector").getByTitle("刷新文件",{exact:true}).waitFor();
+ assert.ok((await tabs()).some(label=>label.includes("文件")),"Returning to A restores its dock");
+ assert.ok(!(await tabs()).some(label=>label.includes("终端")),"A must not inherit B terminal");
+ await page.locator("#sessions .session-row").filter({hasText:identities[1].name}).locator(".session-select").click();
+ await page.locator(".inspector [data-dockkit-tab]").filter({hasText:"终端"}).first().waitFor();
+ await page.unroute("**/api/action");
+ await page.unroute("**/api/state");
+ await page.unroute("**/api/snapshot");
+ await page.reload();
+ await page.waitForFunction(()=>document.querySelector("#status")?.textContent==="就绪"); // An unsaved CodeMirror draft must block a Pi session change until confirmed.
+ await page.locator("#sidebar-panels").getByRole("button",{name:"文件",exact:true}).click();
+ await page.locator('.inspector [data-files-entry="file"][data-files-path="axiom-fixture.txt"] button').click();
+ const editor=page.locator(".inspector .cm-content[contenteditable=true]");
+ await editor.waitFor();
+ await editor.click();
+ await page.keyboard.press("Control+End");
+ await page.keyboard.insertText(" UNCOMMITTED-UI-TEST");
+ await page.waitForFunction(()=>!!document.querySelector(".inspector .wb-bar button:not([disabled])")?.textContent?.includes("保存"));
+ let warning="";
+ page.once("dialog",async dialog=>{warning=dialog.message();await dialog.dismiss();});
+ await page.locator("#new").click();
+ await page.waitForFunction(()=>document.querySelector(".inspector .cm-content")?.textContent?.includes("UNCOMMITTED-UI-TEST"));
+ assert.match(warning,/未保存/);
+ await page.reload();
+ await page.waitForFunction(()=>document.querySelector("#status")?.textContent==="就绪"); assert.deepEqual(errors,[]);console.log("HARNESS_UI_RENDER_PASS",JSON.stringify(a));
 }finally{await browser.close();}

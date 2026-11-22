@@ -56,7 +56,15 @@ import { RightbarResizeHandle } from "./rightbar-resize.tsx";
 import { UserText } from "./secret-view.tsx";
 import { SessionControls } from "./session-controls.tsx";
 import { layoutActions, useLayout } from "./shell-layout.ts";
-import { DialogView, openPanel, SettingsOverlay, SidebarPanels, Workbench } from "./workbench.tsx";
+import {
+  DialogView,
+  forgetRightbarSession,
+  openPanel,
+  SettingsOverlay,
+  SidebarPanels,
+  toggleRightbar,
+  Workbench,
+} from "./workbench.tsx";
 
 const markdown = new MarkdownIt({ html: false, linkify: true }).disable("image");
 const MemoWorkbench = memo(Workbench);
@@ -170,7 +178,10 @@ function App() {
     layoutActions.closeDrawer();
     await run(() => changeSession("switch", id));
   }, []);
-  const deleteSession = useCallback((id: string) => changeSession("delete", id), []);
+  const deleteSession = useCallback(async (id: string) => {
+    await changeSession("delete", id);
+    forgetRightbarSession(id);
+  }, []);
   const [sessionControlsOpen, setSessionControlsOpen] = useState(false);
   const [mode, setMode] = useState(() => localStorage.getItem("axiom.appearance") || "system");
   const [systemDark, setSystemDark] = useState(
@@ -349,7 +360,7 @@ function App() {
                       type="button"
                       title="显示工作台"
                       aria-expanded={l.workbenchOpen}
-                      onClick={layoutActions.toggleWorkbench}
+                      onClick={toggleRightbar}
                     >
                       <PanelRight size={16} />
                     </button>
