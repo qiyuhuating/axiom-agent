@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Axiom host configuration, version 1",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "const": 1,
+      "description": "Unsupported axiom.config.json schemaVersion"
+    },
+    "port": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 65535,
+      "description": "port must be an integer between 0 and 65535"
+    },
+    "runtimePort": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535,
+      "description": "runtimePort must be an integer between 1 and 65535"
+    },
+    "rustTerminalPort": {
+      "type": "integer",
+      "minimum": 1024,
+      "maximum": 65535,
+      "description": "rustTerminalPort must be an integer between 1024 and 65535"
+    },
+    "workspace": {
+      "type": "string",
+      "pattern": "\\S",
+      "description": "workspace must be a nonempty path"
+    },
+    "sessionDir": {
+      "type": "string",
+      "pattern": "\\S",
+      "description": "sessionDir must be a nonempty path"
+    },
+    "rustTerminalBinary": {
+      "type": "string",
+      "pattern": "\\S",
+      "description": "rustTerminalBinary must be a nonempty path"
+    },
+    "terminalBackend": {
+      "enum": ["node", "rust"],
+      "description": "Invalid terminalBackend"
+    },
+    "discoverContext": {
+      "type": "boolean",
+      "description": "discoverContext must be a boolean"
+    },
+    "importLegacyTerminalHistory": {
+      "type": "boolean",
+      "description": "importLegacyTerminalHistory must be a boolean"
+    },
+    "nativeGateway": {
+      "type": "boolean",
+      "description": "nativeGateway must be a boolean"
+    },
+    "provider": {
+      "type": "string",
+      "description": "provider must be a string"
+    },
+    "model": {
+      "type": "string",
+      "description": "model must be a string"
+    },
+    "maxOutputTokens": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991,
+      "description": "maxOutputTokens must be a positive integer"
+    }
+  },
+  "additionalProperties": true
+}
