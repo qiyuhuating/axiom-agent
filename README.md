@@ -102,3 +102,10 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md) and [THIRD_P
 ## License and attribution
 
 MIT. Axiom is an independent project, not an official Pi or DeepSeek product. Retained upstream source and notices are under `vendor/dsh`. See the [upstream source record](vendor/dsh/UPSTREAM.md) and third-party notices.
+
+
+### Concurrent CLI and GUI sessions
+
+The Axiom GUI and `npm run pi` acquire an OS-backed SQLite write lease for each active Pi JSONL file. Opening or deleting a session held by the other entry point reports a conflict. Switch to another session or close the writer to transfer ownership. The operating system releases the lock after a crash. Leave the small SQLite files in the adjacent `.axiom-locks` directory in place. The JSONL file remains the conversation history.
+
+To open a GUI session in the CLI, close or switch away from it in the GUI and run `npm run pi -- --session <absolute-jsonl-path>`. The standalone upstream Pi executable uses its own storage implementation and does not participate in the Axiom lease.
