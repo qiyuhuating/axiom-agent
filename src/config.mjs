@@ -58,7 +58,13 @@ config.workspace = resolve(root, config.workspace);
 config.sessionDir = resolve(root, config.sessionDir);
 mkdirSync(config.workspace, { recursive: true });
 mkdirSync(config.sessionDir, { recursive: true, mode: 0o700 });
-config.workspace = realpathSync.native(config.workspace);
-config.sessionDir = realpathSync.native(config.sessionDir);
-if (contains(config.workspace, config.sessionDir))
+const realWorkspace = realpathSync.native(config.workspace);
+const realSessions = realpathSync.native(config.sessionDir);
+// On POSIX Pi records getcwd(), which resolves symlinks such as macOS /var.
+// Windows callers also use short paths in the existing runtime identity contract.
+if (process.platform !== "win32") {
+  config.workspace = realWorkspace;
+  config.sessionDir = realSessions;
+}
+if (contains(realWorkspace, realSessions))
   throw Error("sessionDir must be outside the workspace");
