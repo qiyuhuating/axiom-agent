@@ -25,7 +25,7 @@ async function launch(backend,fixture){
   await writeFile(fixture.config,JSON.stringify({workspace:fixture.workspace,sessionDir:fixture.dir,runtimePort:p,discoverContext:false,...(backend==="rust-bridge"?{terminalBackend:fixture.legacyConfig?"node":"rust",rustTerminalPort,rustTerminalBinary:daemon,...(fixture.legacyConfig?{}:{importLegacyTerminalHistory:fixture.importLegacy===true})}:{terminalBackend:"node"})}));
   const child=backend==="rust"
     ? spawn(daemon,[String(p),fixture.workspace,fixture.dir,...(fixture.importLegacy?["--import-legacy"]:[])],{stdio:["ignore","pipe","pipe"],windowsHide:true})
-    : spawn(process.execPath,[join(backend==="node"?resolve("."):runtimeRoot,"src/runtime.mjs")],{env:{...process.env,AXIOM_CONFIG:fixture.config,PI_CODING_AGENT_DIR:join(fixture.dir,"pi-agent")},stdio:["ignore","pipe","pipe"],windowsHide:true});
+    : spawn(process.execPath,[join(runtimeRoot,"src/runtime.mjs")],{env:{...process.env,AXIOM_CONFIG:fixture.config,PI_CODING_AGENT_DIR:join(fixture.dir,"pi-agent")},stdio:["ignore","pipe","pipe"],windowsHide:true});
   const exited=once(child,"exit");
   let stderr="";
   child.stdout.resume();child.stderr.on("data",d=>{stderr+=d;});
@@ -53,13 +53,14 @@ async function launch(backend,fixture){
 
 async function receive(instance,id,token,predicate,trigger,answerCursor=false){
   const ctrl=new AbortController();
-  const timeout=setTimeout(()=>ctrl.abort(),20000);
+  let output="";
+  const timeout=setTimeout(()=>ctrl.abort(Error("PTY event timeout; output tail: "+JSON.stringify(output.slice(-1200)))),20000);
   try{
     const r=await fetch(instance.base+"/api/terminal/events?id="+id,{headers:{Authorization:"Bearer "+token},signal:ctrl.signal});
     if(!r.ok)throw Error(await r.text());
     await trigger?.();
     const reader=r.body.getReader(),decoder=new TextDecoder();
-    let pending="",output="",cursorAnswered=false;
+    let pending="",answered=0;
     for(;;){
       const {done,value}=await reader.read();
       if(done)throw Error("PTY stream ended before expected event");
@@ -71,14 +72,15 @@ async function receive(instance,id,token,predicate,trigger,answerCursor=false){
         if(!line)continue;
         const e=JSON.parse(line.slice(6));
         if(e.data)output+=e.data;
-        if(answerCursor&&!cursorAnswered&&output.includes("\x1b[6n")){cursorAnswered=true;const response=await instance.api("terminal-action",{action:"input",value:{id,data:"\x1b[1;1R"}}); assert.ok(response.ok); }
-        if(predicate(e,output))return e;
+        const query=output.lastIndexOf("\x1b[6n");
+        if((answerCursor || trigger)&&query>=answered&&query>=output.length-4){answered=query+4;const response=await instance.api("terminal-action",{action:"input",value:{id,data:"\x1b[1;1R"}}); assert.ok(response.ok); }
+        if(predicate(e,output.replace(/\x1b\[[0-9;]*m/g,"")))return e;
       }
     }
   }finally{clearTimeout(timeout);ctrl.abort();}
 }
 
-for(const backend of ["node","rust","rust-bridge"]){
+for(const backend of ["rust","rust-bridge"]){
   test(backend+" terminal contract: auth, create, resize, input, reconnect, restart history, close",{timeout:90000},async()=>{
     const dir=await mkdtemp(join(tmpdir(),"axiom-pty-"+backend+"-"));
     const fixture={dir,workspace:join(dir,"workspace"),config:join(dir,"config.json"),token:randomBytes(32).toString("hex")};
@@ -101,7 +103,7 @@ for(const backend of ["node","rust","rust-bridge"]){
       });
       const snapshot=await receive(instance,id,fixture.token,e=>e.snapshot===true);
       assert.ok(snapshot.data.includes(marker));assert.equal(snapshot.exit,null);
-      if(backend!=="node")assert.ok(!snapshot.data.startsWith("\x1b[6n"),"Initial ConPTY cursor query must not enter replay history");
+      if(process.platform==="win32")assert.ok(!snapshot.data.startsWith("\x1b[6n"),"Initial ConPTY cursor query must not enter replay history");
       assert.equal((await (await instance.api("terminals")).json()).filter(t=>t.id===id).length,1);
       await instance.stop();instance=await launch(backend,fixture);
       const recovered=await receive(instance,id,fixture.token,e=>e.snapshot===true);
@@ -123,7 +125,7 @@ test("workbench routes Rust terminal and preserves live session across host rest
   await writeFile(join(sessionDir,"runtime.token"),token);
   await writeFile(config,JSON.stringify({workspace,sessionDir,runtimePort,rustTerminalPort,terminalBackend:"rust",rustTerminalBinary:daemon,discoverContext:false}));
   let host;
-  async function startHost(expectMismatch=false,hostRoot=runtimeRoot){
+  async function startHost(hostRoot=runtimeRoot){
     const gateway=process.env.AXIOM_TEST_GATEWAY;
     const privateHost=join(hostRoot,"src/server.mjs");
     const child=spawn(gateway || process.execPath,gateway?["--gateway",process.execPath,privateHost]:[privateHost],{
@@ -151,8 +153,7 @@ test("workbench routes Rust terminal and preserves live session across host rest
         method:body===undefined?"GET":"POST",body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(20000)
       });
       const health=await api("runtime-health");
-      if(expectMismatch){assert.ok(!health.ok);assert.match(await health.text(),/Running terminal backend is rust; configured backend is node/);}
-      else assert.ok(health.ok,await health.clone().text());
+      assert.ok(health.ok,await health.clone().text());
       return {base,api,stop};
     }catch(e){await stop();throw e;}
   }
@@ -174,8 +175,7 @@ test("workbench routes Rust terminal and preserves live session across host rest
     await host.stop();
     const savedConfig=await readFile(config,"utf8");
     await writeFile(config,JSON.stringify({...JSON.parse(savedConfig),terminalBackend:"node"}));
-    // Verify mismatch via source host: the packaged host intentionally maps node to rust.
-    host=await startHost(true,resolve("."));
+    host=await startHost(resolve("."));
     assert.equal((await directHealth(runtimePort)).pid,nodeHealth.pid);
     assert.equal((await directHealth(rustTerminalPort)).pid,rustHealth.pid);
     await host.stop();
@@ -204,21 +204,14 @@ test("offline legacy terminal history imports exactly once without modifying ori
   await writeFile(join(dir,"runtime.token"),fixture.token);
   let instance;
   try{
-    instance=await launch("node",fixture);
-    const created=await instance.api("terminal-action",{action:"create"});
-    assert.ok(created.ok,await created.clone().text());
-    const {id}=await created.json();
-    await receive(instance,id,fixture.token,(_e,output)=>/PS [^\r\n]*>/.test(output),undefined,true);
-    await receive(instance,id,fixture.token,(_e,output)=>output.includes("AXIOM_LEGACY_HISTORY"),async()=>{
-      assert.ok((await instance.api("terminal-action",{action:"input",value:{id,data:"Write-Output ('AXIOM_'+'LEGACY_HISTORY')\r"}})).ok);
-    });
-    await instance.stop();instance=undefined;
+    const id="b2cde9c4-d5fb-4100-ada3-ae75f0e7717d";
+    await writeFile(join(dir,"terminals.json"),JSON.stringify([{id,title:"PowerShell",buffer:"AXIOM_LEGACY_HISTORY",exit:null,createdAt:1}]));
     const old=await readFile(join(dir,"terminals.json"));
     const records=JSON.parse(old);
     assert.equal(records.length,1);
     fixture.importLegacy=true;
     // Installed builds upgrade an old Node configuration in memory, never rewrite it.
-    fixture.legacyConfig=runtimeRoot!==resolve(".");
+    fixture.legacyConfig=true;
     instance=await launch("rust-bridge",fixture);
     if(fixture.legacyConfig){
       assert.equal(JSON.parse(await readFile(fixture.config,"utf8")).terminalBackend,"node");

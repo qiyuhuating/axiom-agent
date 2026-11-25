@@ -12,7 +12,7 @@ import { cpus, platform, release } from "node:os";
 import { performance } from "node:perf_hooks";
 const out=resolve(process.env.AXIOM_BENCH_OUT || "benchmarks/results");
 const root=resolve(process.env.AXIOM_BENCH_RUNTIME || ".desktop-runtime");
-const node=join(root,"bin/node.exe"), daemon=join(root,"bin/axiom-daemon.exe");
+const node=process.execPath, daemon=join(root,"bin/axiom-daemon.exe");
 const count=Number(process.env.AXIOM_BENCH_COUNT || 400);
 assert.ok(Number.isInteger(count)&&count>=100);
 await mkdir(out,{recursive:true});

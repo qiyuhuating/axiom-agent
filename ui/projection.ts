@@ -1,146 +1,27 @@
-import { useSyncExternalStore } from "react";
 import { api, dirtyTabs } from "./panel-shared.tsx";
-export type Dialog = {
-  id: string;
-  method: string;
-  title?: string;
-  message?: string;
-  options?: string[];
-  placeholder?: string;
-  prefill?: string;
-};
-export type Message = {
-  role: string;
-  content: any;
-  errorMessage?: string;
-  toolCallId?: string;
-  toolName?: string;
-  isError?: boolean;
-  details?: unknown;
-};
-export type Tool = {
-  id: string;
-  name: string;
-  args?: unknown;
-  result?: unknown;
-  finished: boolean;
-  failed: boolean;
-  started?: number;
-  ended?: number;
-  details?: unknown;
-  turn?: number;
-};
-type Session = { id: string; name?: string; firstMessage?: string };
-type State = {
-  sessionId: string;
-  workspace: string;
-  busy: boolean;
-  retrying?: boolean;
-  model?: { provider: string; id: string };
-  thinkingLevel?: string;
-};
-type Model = { provider: string; id: string };
-type Attachment = {
-  name: string;
-  path?: string;
-  image?: { type: "image"; mimeType: string; data: string };
-};
-type Composer = { draft: string; attachments: Attachment[] };
-export type Job = {
-  id: string;
-  team?: string;
-  node?: string;
-  label: string;
-  status: string;
-  activity?: string;
-  error?: string;
-  steps?: string[];
-  blockedBy: string[];
-};
-type JobState = {
-  nextCursor: string | null;
-  cursor: string;
-  teamJobs: Job[];
-  mail: any[];
-  jobs: Job[];
-  schedules: any[];
-  plans: Record<string, { goal: string; items: { text: string; done: boolean }[] }>;
-};
-type HarnessState = {
-  sessionId: string;
-  planMode: boolean;
-  goal: null | {
-    id: string;
-    objective: string;
-    phase: string;
-    remaining: number;
-    evidence?: string;
-  };
-};
-type Snapshot = {
-  harness: HarnessState | null;
-  jobs: JobState | null;
-  state: State | null;
-  messages: Message[];
-  tools: Tool[];
-  turn: number;
-  stream: string;
-  models: Model[];
-  levels: string[];
-  sessions: Session[];
-  dialogs: Dialog[];
-  draft: string;
-  attachments: Attachment[];
-  syncing: boolean;
-  syncFailed: boolean;
-  changing: boolean;
-  busy: boolean;
-  retrying: boolean;
-  connected: boolean;
-  error: string;
-  notice: string;
-};
-let snapshot: Snapshot = {
-  harness: null,
-  jobs: null,
-  state: null,
-  messages: [],
-  tools: [],
-  turn: 0,
-  stream: "",
-  models: [],
-  levels: [],
-  sessions: [],
-  dialogs: [],
-  draft: "",
-  attachments: [],
-  syncing: true,
-  syncFailed: false,
-  changing: false,
-  busy: false,
-  retrying: false,
-  connected: false,
-  error: "",
-  notice: "",
-};
-const listeners = new Set<() => void>();
-function update(patch: Partial<Snapshot>) {
-  snapshot = { ...snapshot, ...patch };
-  for (const listener of listeners) listener();
-}
-const subscribe = (listener: () => void) => {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-};
-export const getSnapshot = () => snapshot;
-export function useProjection() {
-  return useSyncExternalStore(subscribe, getSnapshot);
-}
-export function useProjectionField<K extends keyof Snapshot>(key: K): Snapshot[K] {
-  return useSyncExternalStore(subscribe, () => snapshot[key]);
-}
+import {
+  type Attachment,
+  type Composer,
+  type Dialog,
+  type JobState,
+  snapshot,
+  update,
+} from "./projection-store.ts";
+
+export {
+  type Dialog,
+  getSnapshot,
+  type Job,
+  type Message,
+  type Tool,
+  useProjection,
+  useProjectionField,
+} from "./projection-store.ts";
+
+import { projectHistory, textOf, upsertTool } from "./message-history.ts";
+
+export { projectHistory, textOf } from "./message-history.ts";
+
 const composers = new Map<string, Composer>();
 const draftKey = (id: string) => "axiom.composer-draft.v1:" + id;
 function composerFor(id: string): Composer {
@@ -190,68 +71,6 @@ export const action = (action: string, value?: unknown, images?: unknown[]) =>
       : {}),
     ...(images?.length ? { images } : {}),
   });
-export function textOf(content: any): string {
-  return typeof content === "string"
-    ? content
-    : (content ?? [])
-        .filter((x: any) => x.type === "text")
-        .map((x: any) => x.text)
-        .join("\n");
-}
-function mergeTool(e: Partial<Tool> & { id: string }, old?: Tool): Tool {
-  return {
-    id: e.id,
-    name: e.name ?? old?.name ?? "tool",
-    args: e.args ?? old?.args,
-    result: e.result ?? old?.result,
-    finished: e.finished ?? old?.finished ?? false,
-    failed: e.failed ?? old?.failed ?? false,
-    started: e.started ?? old?.started,
-    ended: e.ended ?? old?.ended,
-    details: e.details ?? old?.details,
-    turn: old?.turn ?? e.turn,
-  };
-}
-function upsertTool(tools: Tool[], e: Partial<Tool> & { id: string }): Tool[] {
-  const old = tools.find((t) => t.id === e.id);
-  const next = mergeTool(e, old);
-  return old ? tools.map((t) => (t.id === e.id ? next : t)) : [...tools, next];
-}
-export function projectHistory(messages: Message[]) {
-  const tools = new Map<string, Tool>();
-  let turn = 0;
-  for (const m of messages) {
-    if (m.role === "user") turn++;
-    if (Array.isArray(m.content))
-      for (const c of m.content)
-        if (c.type === "toolCall")
-          tools.set(
-            c.id,
-            mergeTool({ id: c.id, name: c.name, args: c.arguments, turn }, tools.get(c.id)),
-          );
-    if (m.role === "toolResult" && m.toolCallId) {
-      tools.set(
-        m.toolCallId,
-        mergeTool(
-          {
-            id: m.toolCallId,
-            name: m.toolName,
-            result: m.content,
-            details: m.details,
-            failed: !!m.isError,
-            finished: true,
-          },
-          tools.get(m.toolCallId),
-        ),
-      );
-    }
-  }
-  return {
-    messages: messages.filter((m) => ["user", "assistant"].includes(m.role)),
-    tools: Array.from(tools.values()),
-    turn,
-  };
-}
 let generation = 0;
 let pendingEvents: any[] | null = null;
 export async function refresh() {
@@ -407,7 +226,9 @@ export function removeDialog(id: string) {
 let recovering = false;
 export function connect() {
   const events = new EventSource("/api/events");
+  let lastSeqId = 0;
   events.onopen = () => {
+    lastSeqId = 0;
     update({ connected: true });
     void run(async () => {
       await refresh();
@@ -415,7 +236,13 @@ export function connect() {
     });
   };
   events.onerror = () => update({ connected: false });
-  events.onmessage = ({ data }) => handleEvent(JSON.parse(data));
+  events.onmessage = ({ data }) => {
+    const event = JSON.parse(data);
+    if (event.seqId <= lastSeqId) return;
+    if (lastSeqId && event.seqId !== lastSeqId + 1) void run(refresh);
+    lastSeqId = event.seqId;
+    handleEvent(event);
+  };
   return () => {
     events.close();
     generation++;

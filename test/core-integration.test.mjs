@@ -136,7 +136,23 @@ test("HTTP host: authenticated runtime, restart, extension confirmation and stal
     const eventTask=(async()=>{
       const reader=response.body.getReader(),decoder=new TextDecoder();
       let buffer="";
-      try{while(true){const {value,done}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});let i;while((i=buffer.indexOf("\n\n"))!==-1){const frame=buffer.slice(0,i);buffer=buffer.slice(i+2);if(frame.startsWith("data: "))events.push(JSON.parse(frame.slice(6)));}}}
+      try {
+        while (true) {
+          const {value,done}=await reader.read();
+          if (done) break;
+          buffer+=decoder.decode(value,{stream:true});
+          let boundary;
+          while ((boundary=buffer.indexOf("\n\n"))!==-1) {
+            const frame=buffer.slice(0,boundary);
+            buffer=buffer.slice(boundary+2);
+            if (!frame.startsWith("data: ")) continue;
+            const event=JSON.parse(frame.slice(6));
+            assert.ok(Number.isSafeInteger(event.seqId));
+            if(events.length) assert.equal(event.seqId,events.at(-1).seqId+1);
+            events.push(event);
+          }
+        }
+      }
       catch(error){if(!sse.signal.aborted)throw error;}
     })();
     eventTask.catch(()=>{});

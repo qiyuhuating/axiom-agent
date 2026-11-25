@@ -9,33 +9,6 @@
   height: calc(28px + var(--dsh-content-font-delta, 0px));
 }
 
-/* The user clock keeps the secondary tier. */
-.timeStart {
-  padding-right: 12px;
-  font-size: var(--dsh-content-font-size-secondary, 13px);
-  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
-  color: var(--dsw-alias-label-tertiary);
-  white-space: nowrap;
-}
-
-/* Assistant-tail metadata keeps the smaller information size while sharing
-   the action icons' resting color. */
-.timeEnd {
-  font-size: calc(var(--dsh-content-font-size-secondary, 13px) - 1px);
-  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
-  color: inherit;
-  white-space: nowrap;
-}
-
-.endInfo {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  margin-left: 8px;
-  color: var(--dsw-alias-label-tertiary);
-}
-
 /* Earlier user-authored flow rows and opted-in turn tails reveal the complete
    actions row on hover or focus-within. Opacity keeps layout stable, and
    devices without hover keep every row visible. */
@@ -104,13 +77,4 @@
     background: transparent;
     color: var(--dsw-alias-label-tertiary);
   }
-}
-
-.visuallyHidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
 }

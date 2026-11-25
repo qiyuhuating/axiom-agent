@@ -24,8 +24,3 @@
 [data-composer-command][data-selected] > .reference {
   background: var(--dsw-alias-state-business-tertiary);
 }
-
-.textRef {
-  display: inline-block;
-  max-width: 100%;
-}

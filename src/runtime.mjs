@@ -3,6 +3,7 @@ import { config } from "./config.mjs";
 import { createRuntimeContext } from "./cordis-runtime.mjs";
 import { body, healthStats, json, requestError, requestUrl } from "./http.mjs";
 import { runtimePort, runtimeToken } from "./runtime-auth.mjs";
+import { createRustTerminalBackend } from "./terminal-rust.mjs";
 
 let jobs, term, ctx;
 const server = createServer(async (req, res) => {
@@ -49,32 +50,7 @@ const server = createServer(async (req, res) => {
         return json(res, ctx.axiomJobs.page(cursor, limit, params.get("session") ?? ""));
       }
       if (path === "/api/terminals") return json(res, await ctx.axiomTerminal.listAsync());
-      if (path === "/api/terminal/events") {
-        if (term.streamTerminal) return await term.streamTerminal(req, res);
-        const t = ctx.axiomTerminal.get(url.searchParams.get("id"));
-        res.writeHead(200, {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          Connection: "keep-alive",
-        });
-        const send = (e) => {
-          if (res.writableLength > 4 * 1024 * 1024) res.destroy();
-          else res.write("data: " + JSON.stringify(e) + "\n\n");
-        };
-        send({
-          snapshot: true,
-          data: t.buffer,
-          exit: t.exit,
-          interrupted: Boolean(t.interrupted),
-        });
-        t.listeners.add(send);
-        const timer = setInterval(() => res.write(": heartbeat\n\n"), 15000);
-        res.on("close", () => {
-          clearInterval(timer);
-          t.listeners.delete(send);
-        });
-        return;
-      }
+      if (path === "/api/terminal/events") return await term.streamTerminal(req, res);
     }
     if (req.method === "POST") {
       const { action, value } = await body(req);
@@ -101,12 +77,7 @@ server.listen(runtimePort, "127.0.0.1", async () => {
   try {
     process.env.AXIOM_TEAM_PORT = String(runtimePort);
     jobs = await import("./jobs.mjs");
-    if (config.terminalBackend === "rust") {
-      const { createRustTerminalBackend } = await import("./terminal-rust.mjs");
-      term = await createRustTerminalBackend();
-    } else {
-      term = await import("./terminal.mjs");
-    }
+    term = await createRustTerminalBackend();
     ctx = await createRuntimeContext(jobs, term);
     console.log("Axiom runtime listening " + runtimePort);
   } catch (e) {

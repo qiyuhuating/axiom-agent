@@ -52,7 +52,7 @@ cargo check --locked --manifest-path src-tauri/Cargo.toml
 npm run desktop:build
 ```
 
-The NSIS build stages a checksum-verified Node.js 24.16.0 distribution and npm, production dependencies, and compiled UI. It excludes build-only frontend dependencies and node-pty; the Rust terminal daemon provides the native PTY. Before upgrading, finish active jobs and terminals, then stop the installed background runtime using the existing authenticated runtime:stop command with its desktop configuration. The desktop app stores configuration and sessions under its local app data directory, uses a dynamically assigned loopback HTTP port, and retains the separate background runtime (default desktop runtime port 4798). PowerShell 7 and Git remain external tools. The preceding Windows CI installer passed native WebView2 acceptance. The legacy terminal remains a development-only parity baseline; Windows desktop uses the native Rust terminal by default. The separate POSIX sandbox and process-tree implementation remain unverified.
+The Windows installer includes the Rust daemon, production dependencies and compiled UI. At startup it selects a system x64 Node 22.19+ (22.x) or 24.x with npm. If neither is available, the first launch downloads the pinned Node 24.16.0 archive from nodejs.org, checks its SHA-256 and caches it under the desktop data directory. Later launches can use this cache offline. It excludes build-only frontend dependencies and node-pty; the Rust terminal daemon provides the native PTY. Before upgrading, finish active jobs and terminals, then stop the installed background runtime using the existing authenticated runtime:stop command with its desktop configuration. The desktop app stores configuration and sessions under its local app data directory, uses a dynamically assigned loopback HTTP port, and retains the separate background runtime (default desktop runtime port 4798). PowerShell 7 and Git remain external tools. The preceding Windows CI installer passed native WebView2 acceptance. Source and installed builds use the Rust terminal. Source startup builds the daemon with Cargo. Linux and macOS use a supervised PTY process group. Their background job sandbox is still unavailable.
 
 ## Architecture
 
@@ -102,3 +102,10 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md) and [THIRD_P
 ## License and attribution
 
 MIT. Axiom is an independent project, not an official Pi or DeepSeek product. Retained upstream source and notices are under `vendor/dsh`. See the [upstream source record](vendor/dsh/UPSTREAM.md) and third-party notices.
+
+
+### Concurrent CLI and GUI sessions
+
+The Axiom GUI and `npm run pi` acquire an OS-backed SQLite write lease for each active Pi JSONL file. Opening or deleting a session held by the other entry point reports a conflict. Switch to another session or close the writer to transfer ownership. The operating system releases the lock after a crash. Leave the small SQLite files in the adjacent `.axiom-locks` directory in place. The JSONL file remains the conversation history.
+
+To open a GUI session in the CLI, close or switch away from it in the GUI and run `npm run pi -- --session <absolute-jsonl-path>`. The standalone upstream Pi executable uses its own storage implementation and does not participate in the Axiom lease.

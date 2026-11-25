@@ -20,7 +20,7 @@ test("runtime probes share startup work and reject stale services before forward
       JSON.stringify({
         ok: true,
         protocol: 1,
-        terminalBackend: "node",
+        terminalBackend: "rust",
         workspace: activeWorkspace,
         sessionDir,
       }),

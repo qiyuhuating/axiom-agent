@@ -6,10 +6,12 @@ import { projectHarness, projectSessionHistory } from "./harness-state.mjs";
 import { decodeRequest, validateAnswer } from "./interaction-protocol.mjs";
 import { PiClient } from "./pi-client.mjs";
 import { builtinPromptPath } from "./prompt-store.mjs";
+import { acquireSessionLease } from "./session-lease.mjs";
 
 export class Agent {
   #client;
   #listeners = new Set();
+  #seqId = 0;
   #busy = false;
   #retrying = false;
   #startup;
@@ -35,7 +37,7 @@ export class Agent {
   }
   async #init() {
     const client = this.#makeClient({
-      cliPath: resolve(root, "node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js"),
+      cliPath: resolve(root, "src/pi-session-cli.mjs"),
       cwd: config.workspace,
       provider: config.provider,
       model: config.model,
@@ -127,7 +129,8 @@ export class Agent {
     if (!this.#closed) this.#emit({ type: "connection_error", error: error.message, busy: false });
   }
   #emit(event) {
-    for (const listener of this.#listeners) listener(event);
+    const sequenced = { ...event, seqId: ++this.#seqId };
+    for (const listener of this.#listeners) listener(sequenced);
   }
   subscribe(listener) {
     this.#listeners.add(listener);
@@ -309,7 +312,12 @@ export class Agent {
             throw new Error("Pi refused to close the active session.");
           }
         }
-        await unlink(path);
+        const release = acquireSessionLease(path);
+        try {
+          await unlink(path);
+        } finally {
+          release();
+        }
         return { deleted: entry.id };
       }
       if (action === "rename") {
