@@ -53,13 +53,14 @@ async function launch(backend,fixture){
 
 async function receive(instance,id,token,predicate,trigger,answerCursor=false){
   const ctrl=new AbortController();
-  const timeout=setTimeout(()=>ctrl.abort(),20000);
+  let output="";
+  const timeout=setTimeout(()=>ctrl.abort(Error("PTY event timeout; output tail: "+JSON.stringify(output.slice(-1200)))),20000);
   try{
     const r=await fetch(instance.base+"/api/terminal/events?id="+id,{headers:{Authorization:"Bearer "+token},signal:ctrl.signal});
     if(!r.ok)throw Error(await r.text());
     await trigger?.();
     const reader=r.body.getReader(),decoder=new TextDecoder();
-    let pending="",output="",cursorAnswered=false;
+    let pending="",answered=0;
     for(;;){
       const {done,value}=await reader.read();
       if(done)throw Error("PTY stream ended before expected event");
@@ -71,8 +72,9 @@ async function receive(instance,id,token,predicate,trigger,answerCursor=false){
         if(!line)continue;
         const e=JSON.parse(line.slice(6));
         if(e.data)output+=e.data;
-        if(answerCursor&&!cursorAnswered&&output.includes("\x1b[6n")){cursorAnswered=true;const response=await instance.api("terminal-action",{action:"input",value:{id,data:"\x1b[1;1R"}}); assert.ok(response.ok); }
-        if(predicate(e,output))return e;
+        const query=output.lastIndexOf("\x1b[6n");
+        if((answerCursor || trigger)&&query>=answered&&query>=output.length-4){answered=query+4;const response=await instance.api("terminal-action",{action:"input",value:{id,data:"\x1b[1;1R"}}); assert.ok(response.ok); }
+        if(predicate(e,output.replace(/\x1b\[[0-9;]*m/g,"")))return e;
       }
     }
   }finally{clearTimeout(timeout);ctrl.abort();}
@@ -101,7 +103,7 @@ for(const backend of ["rust","rust-bridge"]){
       });
       const snapshot=await receive(instance,id,fixture.token,e=>e.snapshot===true);
       assert.ok(snapshot.data.includes(marker));assert.equal(snapshot.exit,null);
-      assert.ok(!snapshot.data.startsWith("\x1b[6n"),"Initial ConPTY cursor query must not enter replay history");
+      if(process.platform==="win32")assert.ok(!snapshot.data.startsWith("\x1b[6n"),"Initial ConPTY cursor query must not enter replay history");
       assert.equal((await (await instance.api("terminals")).json()).filter(t=>t.id===id).length,1);
       await instance.stop();instance=await launch(backend,fixture);
       const recovered=await receive(instance,id,fixture.token,e=>e.snapshot===true);

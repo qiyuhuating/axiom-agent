@@ -58,5 +58,7 @@ config.workspace = resolve(root, config.workspace);
 config.sessionDir = resolve(root, config.sessionDir);
 mkdirSync(config.workspace, { recursive: true });
 mkdirSync(config.sessionDir, { recursive: true, mode: 0o700 });
-if (contains(realpathSync(config.workspace), realpathSync(config.sessionDir)))
+config.workspace = realpathSync.native(config.workspace);
+config.sessionDir = realpathSync.native(config.sessionDir);
+if (contains(config.workspace, config.sessionDir))
   throw Error("sessionDir must be outside the workspace");
