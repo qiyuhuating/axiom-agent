@@ -3,7 +3,6 @@
 /* The turn-tail gap alone separates adjacent file sections. The default top
    margin remains when deliveries are the first file section after prose. */
 .root[data-after-changes='true'] { margin-top: 0; }
-.hostStatus { display: flex; align-items: center; gap: 8px; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); }
 .presented { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; min-width: 0; }
 .presented[data-single='true'] { grid-template-columns: minmax(0, 1fr); }
 .file { position: relative; box-sizing: border-box; display: flex; align-items: center; gap: 10px; min-width: 0; height: 60px; padding: 8px 10px; overflow: hidden; border: 0.5px solid var(--dsw-alias-border-l1); border-radius: var(--dsw-radius-lg); background: var(--deliverable-fill); color: var(--dsw-alias-label-primary); transition: background-color 120ms ease; }
@@ -24,10 +23,5 @@
 
   .file:hover .description:not([role='status']) .previewHint { display: inline; }
 }
-.toggle { align-self: center; display: inline-flex; align-items: center; gap: 4px; min-width: 0; padding: 1px 11px; border: 0; border-radius: var(--dsw-radius-sm); background: transparent; color: var(--dsw-alias-label-tertiary); cursor: pointer; font: inherit; font-size: 12px; line-height: 18px; }
-@media (hover: hover) {
-  .toggle:hover { background: var(--dsw-alias-interactive-bg-hover); }
-}
-.toggle svg { flex: none; width: 14px; height: 14px; }
 @container (max-width: 620px) { .presented { grid-template-columns: minmax(0, 1fr); } }
 .actions { display: inline-flex; flex: none; pointer-events: auto; }

@@ -5,29 +5,6 @@
  * Tokens only.
  */
 
-/*
- * One content tree uses the frame's width normally and fills the viewport in
- * fullscreen. The frame retains a shown wide panel's track in both modes.
- *
- * Hidden, docked Grid items translate off the frame's right edge rather than
- * unmounted, so showing and hiding are one slide in both presentations. The
- * transform rides the same variables as the frame's track transition (ui-theme
- * base.css); while squeezing, the panel's left edge and the conversation's right
- * edge therefore travel together. Visibility flips after the slide so the box
- * is out of reach once off-edge, and flips back before the slide starts.
- *
- * The normal panel is below frame overlays (20); fullscreen (40) covers the
- * frame and remains below independently floating panels (60). The common
- * content root owns no stacking context or transform.
- */
-.session {
-  display: contents;
-}
-
-.session[hidden] {
-  display: none;
-}
-
 .panel {
   --dsh-dockkit-dock-layer: 10;
   --dsh-dockkit-float-layer: 60;
@@ -174,13 +151,6 @@
   .panelBody :global([data-dockkit-split-control]:has(> [data-dockkit-split-blocked])) {
     visibility: hidden;
   }
-}
-
-.unavailable {
-  margin: 0;
-  padding: 12px;
-  color: var(--dsw-alias-label-tertiary);
-  font-size: var(--dsh-content-font-size-secondary, 13px);
 }
 
 /* Keep the title's icon and text in dockkit's flex row while retaining occurrence markers. */

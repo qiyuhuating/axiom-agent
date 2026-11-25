@@ -111,7 +111,7 @@ const server = createServer(async (req, res) => {
           Connection: "keep-alive",
         });
         res.flushHeaders();
-        res.write(": ready\n\n");
+        res.write("retry: 250\n: ready\n\n");
         const off = agent.subscribe((event) => {
           if (res.writableLength > 4 * 1024 * 1024) res.destroy();
           else res.write("data: " + JSON.stringify(event) + "\n\n");

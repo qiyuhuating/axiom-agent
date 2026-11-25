@@ -1,0 +1,22 @@
+--- a/packages/sandbox/sandbox-windows-acl/src/index.ts
++++ b/packages/sandbox/sandbox-windows-acl/src/index.ts
+@@ -58,7 +58,6 @@
+ export { AclWriteGrant } from './grant.ts'
+ export { assertTempRootOutsideWorkspace, isTempRootInsideWorkspace } from './path-boundary.ts'
+ export { tempWriteSid, workspaceWriteSid } from './workspace-sid.ts'
+-export { ACL_DIAGNOSIS_SKILL, registerAclDiagnosisSkill } from './acl-skill.ts'
+ /** Construction options: the workspace/temp allowlists and their distinct SID identities. */
+ export interface AclSandboxOptions {
+   /** Directories the confined child may write into (must exist and be caller-owned). */
+--- a/packages/util/error/src/index.ts
++++ b/packages/util/error/src/index.ts
+@@ -5,8 +5,7 @@
+  */
+
+ /**
+- * Base class for all harness errors. Carries a `code` (stable, programmatic —
+- * e.g. `NO_ADAPTER`, `INVALID_ARGS`) distinct from the
++ * Base class for all harness errors. Carries a `code` (stable, programmatic 鈥? * e.g. `NO_ADAPTER`, `INVALID_ARGS`) distinct from the
+  * human-readable `message`, and supports `cause` chaining via the standard
+  * `ErrorOptions`. `name` defaults to the subclass constructor name.
+  */

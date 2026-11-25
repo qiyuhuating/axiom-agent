@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "../vendor/dsh/primitives/Button.tsx";
-import { JobDetails, TeamOverview } from "./harness-features.tsx";
+import { JobDetails, TeamOverview } from "./team-overview.tsx";
 import { api, errorBox, Header, msg } from "./panel-shared.tsx";
 import { appendDraft, getSnapshot, loadJobs, useProjection } from "./projection.ts";
 

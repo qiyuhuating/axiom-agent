@@ -77,9 +77,3 @@
   outline: 1px solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
   outline-offset: 2px;
 }
-
-.body {
-  padding: 6px 22px 20px;
-  font: var(--dsw-font-markdown-code-block);
-  overflow-x: auto;
-}

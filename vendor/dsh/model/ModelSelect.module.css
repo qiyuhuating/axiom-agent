@@ -66,12 +66,6 @@
   color: var(--dsw-alias-label-caption);
 }
 
-/* The Models glyph replaces the text when the composer row cannot fit it. */
-.triggerIcon {
-  display: var(--dsh-composer-model-icon-display, none);
-  flex: 0 0 auto;
-}
-
 /* The composer measures expanded row demand and owns these display variables.
    Outside a composer, the trigger retains its text. */
 .triggerLabel,
@@ -129,117 +123,12 @@
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
-.settingsMenu {
-  width: min(240px, calc(100vw - 24px));
-}
-
 .status,
 .empty {
   padding: 8px;
   color: var(--dsw-alias-label-tertiary);
   font-size: 12px;
   line-height: 18px;
-}
-
-.error,
-.warning {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 6px;
-  margin-bottom: 3px;
-  padding: 6px 7px;
-  border-radius: var(--dsw-radius-md);
-  background: var(--dsw-alias-interactive-bg-hover-danger);
-  color: var(--dsw-alias-state-error-primary);
-  font-size: 11px;
-  line-height: 16px;
-}
-
-.warning {
-  background: var(--dsw-alias-bg-module-platform);
-  color: var(--dsw-alias-state-warn-label);
-}
-
-.retry {
-  flex: 0 0 auto;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.searchRow {
-  position: relative;
-  flex-shrink: 0;
-  margin: 2px 0 3px;
-}
-
-.searchRow .search {
-  display: flex;
-  height: auto;
-  padding: 5px 7px;
-  border: 0 solid transparent;
-  border-radius: var(--dsw-radius-md);
-  background: transparent;
-}
-
-.searchRow .searchWithQuery {
-  padding-right: 34px;
-}
-
-.searchClear {
-  position: absolute;
-  top: 50%;
-  right: 4px;
-  transform: translateY(-50%);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  corner-shape: round;
-  background: transparent;
-  color: var(--dsw-alias-label-secondary);
-  cursor: pointer;
-}
-
-.searchClear:focus-visible {
-  outline: none;
-  background: var(--dsw-alias-interactive-bg-hover);
-}
-
-@media (hover: hover) {
-  .searchClear:hover {
-    outline: none;
-    background: var(--dsw-alias-interactive-bg-hover);
-  }
-}
-
-.searchRow .search:focus-within {
-  border-color: transparent;
-}
-
-.searchRow .search input {
-  padding: 0;
-  font-size: 12px;
-  line-height: normal;
-}
-
-@media (pointer: coarse) {
-  .searchRow .search input {
-    font-size: 16px;
-  }
-}
-
-.searchRow .search input::placeholder {
-  color: var(--dsw-alias-label-caption);
 }
 
 .groups:not([hidden]) {
@@ -271,20 +160,10 @@
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
-.modelOption {
-  max-width: 100%;
-}
-
 @media (hover: hover) {
   .option:not(.modelOption):hover:not(:disabled) {
     background: var(--dsw-alias-interactive-bg-hover);
   }
-}
-
-/* Selection marker is the trailing check, not a fill — matches the Menu
- * primitive's selected treatment. */
-.selected {
-  background: transparent;
 }
 
 .option:disabled {
@@ -307,25 +186,6 @@
   font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.badgedName {
-  display: inline-flex;
-  align-items: center;
-  max-width: 100%;
-  gap: 4px;
-  vertical-align: baseline;
-  white-space: nowrap;
-}
-
-.badgedNameText {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.badge {
-  flex: none;
 }
 
 .check {
