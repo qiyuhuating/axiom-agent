@@ -53,12 +53,3 @@ mod windows {
 }
 #[cfg(windows)]
 pub use windows::ProcessTree;
-
-#[cfg(not(windows))]
-pub struct ProcessTree;
-#[cfg(not(windows))]
-impl ProcessTree {
-    pub fn attach(_child: &dyn portable_pty::Child) -> anyhow::Result<Self> {
-        anyhow::bail!("Native process-tree lifetime management is not verified on this platform");
-    }
-}

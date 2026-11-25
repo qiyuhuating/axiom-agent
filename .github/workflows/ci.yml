@@ -77,3 +77,23 @@ jobs:
           name: axiom-windows-x64-nsis
           path: dist/
           if-no-files-found: error
+
+  posix:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run build:ui
+      - run: cargo test --locked --manifest-path daemon/Cargo.toml
+      - run: cargo build --locked --manifest-path daemon/Cargo.toml
+      - run: node --test scripts/check-posix-terminal.mjs test/session-lease.test.mjs test/provider-roundtrip.test.mjs test/harness-rpc.test.mjs test/workspace.test.mjs
+      - run: node --test --test-name-pattern "^rust terminal contract" scripts/check-terminal-parity.mjs

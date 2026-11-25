@@ -3,7 +3,10 @@
 mod gateway;
 mod history;
 use history::History;
+#[cfg(windows)]
 mod process_tree;
+#[cfg(unix)]
+mod unix_pty;
 use anyhow::{bail, Context, Result};
 use axum::{
     extract::{DefaultBodyLimit, Query, State},
@@ -17,6 +20,7 @@ use axum::{
     Json, Router,
 };
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
+#[cfg(windows)]
 use process_tree::ProcessTree;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -56,6 +60,7 @@ struct Terminal {
 }
 
 struct Live {
+    #[cfg(windows)]
     _tree: ProcessTree,
     master: Box<dyn MasterPty + Send>,
     killer: Box<dyn ChildKiller + Send + Sync>,
@@ -231,14 +236,27 @@ impl Store {
             pixel_width: 0,
             pixel_height: 0,
         })?;
-        let mut command = CommandBuilder::new(shell);
-        command.args(["-NoLogo", "-NoProfile"]);
+        #[cfg(windows)]
+        let mut command = {
+            let mut cmd = CommandBuilder::new(shell);
+            cmd.args(["-NoLogo", "-NoProfile"]);
+            cmd
+        };
+        #[cfg(unix)]
+        let mut command = {
+            let mut cmd = CommandBuilder::new(std::env::current_exe()?);
+            cmd.arg("--pty-shell");
+            cmd.arg(std::process::id().to_string());
+            cmd.arg(shell);
+            cmd
+        };
         command.cwd(&self.workspace);
         command.env("TERM", "xterm-256color");
         let reader = pair.master.try_clone_reader()?;
         let mut writer = pair.master.take_writer()?;
         let mut child = pair.slave.spawn_command(command)?;
         drop(pair.slave);
+        #[cfg(windows)]
         let tree = match ProcessTree::attach(child.as_ref()) {
             Ok(tree) => tree,
             Err(e) => {
@@ -261,6 +279,7 @@ impl Store {
         *terminal.live.lock().unwrap() = Some(Live {
             master: pair.master,
             killer,
+            #[cfg(windows)]
             _tree: tree,
             input,
         });
@@ -547,10 +566,19 @@ async fn events(State(app): State<App>, Query(query): Query<TerminalQuery>) -> R
         .into_response()
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    // Explicit standalone test/preview entry. Do not share a live Node archive.
+fn main() -> Result<()> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
+    #[cfg(unix)]
+    if args.first().is_some_and(|arg| arg == "--pty-shell") {
+        let [_, parent, shell] = &args[..] else { bail!("Invalid PTY supervisor arguments"); };
+        let code = unix_pty::run(parent.to_str().context("daemon pid")?.parse()?, shell)?;
+        std::process::exit(code);
+    }
+    serve(args)
+}
+
+#[tokio::main]
+async fn serve(args: Vec<std::ffi::OsString>) -> Result<()> {
     if args.first().is_some_and(|arg| arg == "--gateway") {
         return gateway::run(&args[1..]).await;
     }
