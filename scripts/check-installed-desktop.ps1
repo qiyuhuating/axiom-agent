@@ -8,13 +8,16 @@ if (Test-Path $dataDir) { throw "The app data directory already exists: $dataDir
 $installDir = Join-Path $env:LOCALAPPDATA 'Temp/Axiom Installer Smoke'
 $legacyPackage = Join-Path $installDir 'runtime/node_modules/node-pty'
 $legacySource = Join-Path $installDir 'runtime/src/terminal.mjs'
+$legacyNode = Join-Path $installDir 'runtime/bin/node.exe'
+$null = New-Item -ItemType Directory -Path (Split-Path $legacyNode) -Force
+Set-Content -LiteralPath $legacyNode -Value 'old bundled runtime fixture'
 New-Item -ItemType Directory -Path $legacyPackage, (Split-Path -Parent $legacySource) -Force | Out-Null
 Set-Content (Join-Path $legacyPackage 'package.json') '{}'
 Set-Content $legacySource '// Retired terminal module fixture'
 
 $setup = Start-Process -FilePath $installers[0].FullName -ArgumentList "/S /D=$installDir" -PassThru -Wait
 if ($setup.ExitCode -ne 0) { throw "NSIS installer exited with code $($setup.ExitCode)" }
-if ((Test-Path $legacyPackage) -or (Test-Path $legacySource)) {
+if ((Test-Path $legacyPackage) -or (Test-Path $legacySource) -or (Test-Path $legacyNode)) {
     throw 'The installer left files from the legacy terminal backend'
 }
 

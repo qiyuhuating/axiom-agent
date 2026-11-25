@@ -1,6 +1,6 @@
 # Rust host migration: phase 1
 
-This PR adds the first native HTTP gateway and PTY migration slice. The optional Rust listener owns the public loopback HTTP ingress while the existing Node host remains the private handler for business routes. Pi remains the only agent engine. The Node business host, job runtime and Cordis remain. Installed and source builds use the Rust PTY. Existing configuration files are not rewritten.
+This PR adds the first native HTTP gateway and PTY migration slice. The optional Rust listener owns the public loopback HTTP ingress while the existing Node host remains the private handler for business routes. Pi remains the only agent engine. The Node business host, job runtime and Cordis remain. Installed and source builds use the Rust PTY. On Linux and macOS a PTY supervisor owns the foreground shell group and cleans it up when the daemon exits. This process-group scope does not confine a program that starts a new session. Existing configuration files are not rewritten.
 
 ## Try in an isolated workspace
 

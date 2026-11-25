@@ -18,7 +18,8 @@ const rustListener=createServer();rustListener.listen(0,"127.0.0.1");await once(
 const rustTerminalPort=rustListener.address().port;await new Promise(resolve=>rustListener.close(resolve));
 await mkdir(workspace);
 await writeFile(config,JSON.stringify({workspace,sessionDir,runtimePort,rustTerminalPort,discoverContext:false}));
-const node=join(root,'bin','node.exe');
+assert.equal(existsSync(join(root,'bin','node.exe')),false,'Node must be selected at launch');
+const node=process.execPath;
 const child=spawn(node,[join(root,'src','server.mjs')],{cwd:root,env:{...process.env,AXIOM_DESKTOP:'1',AXIOM_CONFIG:config,PI_CODING_AGENT_DIR:join(dir,'pi-agent'),PATH:join(root,'bin')+delimiter+process.env.PATH},stdio:['pipe','pipe','inherit'],windowsHide:true});
 const exited=once(child,'exit');
 const lines=createInterface({input:child.stdout});

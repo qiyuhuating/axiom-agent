@@ -86,7 +86,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // Node cannot resolve Win32 verbatim paths (e.g. \\?\D:\\...).
     let runtime = app.path().resource_dir()?.join("runtime");
     #[cfg(debug_assertions)]
-    let runtime = if runtime.join("bin/node.exe").is_file() {
+    let runtime = if runtime.join("bin/axiom-daemon.exe").is_file() {
         runtime
     } else {
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.desktop-runtime")
@@ -110,9 +110,34 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         fs::write(&config, serde_json::to_vec_pretty(&defaults)?)?;
     }
     let bin = runtime.join("bin");
-    let path = std::env::join_paths(std::iter::once(bin.clone()).chain(std::env::split_paths(
-        &std::env::var_os("PATH").unwrap_or_default(),
-    )))?;
+    let pwsh =
+        std::path::PathBuf::from(std::env::var_os("ProgramFiles").ok_or("ProgramFiles missing")?)
+            .join("PowerShell/7/pwsh.exe");
+    let selected = Command::new(pwsh)
+        .args(["-NoProfile", "-NonInteractive", "-File"])
+        .arg(runtime.join("scripts/desktop-node.ps1"))
+        .arg("-DataDir")
+        .arg(&data)
+        .creation_flags(0x08000000)
+        .output()?;
+    if !selected.status.success() {
+        return Err(format!(
+            "Select desktop Node runtime: {}",
+            String::from_utf8_lossy(&selected.stderr)
+        )
+        .into());
+    }
+    let node = std::path::PathBuf::from(std::str::from_utf8(&selected.stdout)?.trim());
+    if !node.is_absolute() || !node.is_file() {
+        return Err("Invalid desktop Node executable".into());
+    }
+    let path = std::env::join_paths(
+        std::iter::once(node.parent().unwrap().to_owned())
+            .chain(std::iter::once(bin.clone()))
+            .chain(std::env::split_paths(
+                &std::env::var_os("PATH").unwrap_or_default(),
+            )),
+    )?;
     let log = OpenOptions::new()
         .create(true)
         .write(true)
@@ -124,7 +149,6 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             .strip_prefix(&[0xef, 0xbb, 0xbf])
             .unwrap_or(&config_bytes),
     )?;
-    let node = bin.join("node.exe");
     let server = runtime.join("src/server.mjs");
     let mut command = if settings
         .get("nativeGateway")

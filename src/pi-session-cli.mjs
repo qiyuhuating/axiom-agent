@@ -34,18 +34,34 @@ registerHooks({
       const rename = "const mgr = SessionManager.open(sessionFilePath);";
       const fork =
         "const fork = SessionManager.forkFrom(sourcePath, cwd, this.sessionManager.getSessionDir());";
-      if (!source.includes(rename) || !source.includes(fork))
+      if (
+        ![
+          rename,
+          fork,
+          "mgr.appendSessionInfo(next);",
+          "return result;\n    }\n    getLoginProviderOptions",
+        ].every((fragment) => source.includes(fragment))
+      )
         throw Error("Update Pi TUI session integration");
       return {
         ...result,
         source: source
-          .replace(rename, rename.replace("const ", "using "))
-          .replace(fork, fork.replace("const ", "using ")),
+          .replace(
+            "mgr.appendSessionInfo(next);",
+            "try { mgr.appendSessionInfo(next); } finally { mgr[Symbol.dispose](); }",
+          )
+          .replace(fork, fork + " try {")
+          .replace(
+            "return result;\n    }\n    getLoginProviderOptions",
+            "return result; } finally { fork[Symbol.dispose](); }\n    }\n    getLoginProviderOptions",
+          ),
       };
     }
     if (url === storage) {
       const create = 'const fd = openSync(newSessionFile, "wx");';
-      if (!source.includes(create)) throw Error("Update Pi session fork integration");
+      const done = "return new SessionManager(resolvedTargetCwd, dir, newSessionFile, true);";
+      if (!source.includes(create) || !source.includes(done))
+        throw Error("Update Pi session fork integration");
       // Keep the target exclusively owned through its first write and manager construction.
       return {
         ...result,
@@ -53,11 +69,12 @@ registerHooks({
           "import { acquireSessionLease } from " +
           JSON.stringify(leaseModule) +
           ";\n" +
-          source.replace(
-            create,
-            "using target = new DisposableStack(); target.defer(acquireSessionLease(newSessionFile));\n" +
+          source
+            .replace(
               create,
-          ),
+              "const releaseTarget = acquireSessionLease(newSessionFile); try {\n" + create,
+            )
+            .replace(done, done + " } finally { releaseTarget(); }"),
       };
     }
     const signature = "async function deleteSessionFile(sessionPath) {";

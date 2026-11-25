@@ -1,4 +1,3 @@
-param([switch]$SkipRuntimeDownload)
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 Set-Location $root
@@ -15,32 +14,14 @@ foreach ($file in $manifest.runtimeFiles) {
     Copy-Item -LiteralPath (Join-Path $root $relative) -Destination $destination
 }
 foreach($path in 'index.html','style.css'){Copy-Item -LiteralPath (Join-Path $root "public/$path") -Destination (Join-Path $stage 'public')}
-foreach($path in 'pi.mjs','runtime-stop.mjs'){Copy-Item -LiteralPath (Join-Path $root "scripts/$path") -Destination (Join-Path $stage 'scripts')}
+foreach($path in 'pi.mjs','runtime-stop.mjs','desktop-node.ps1'){Copy-Item -LiteralPath (Join-Path $root "scripts/$path") -Destination (Join-Path $stage 'scripts')}
 node scripts/build-ui.mjs (Join-Path $stage 'public')
 if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
 Push-Location $stage
 try{npm ci --omit=dev --no-audit --no-fund;if($LASTEXITCODE -ne 0){throw 'Production dependency installation failed'}}finally{Pop-Location}
 if(Test-Path (Join-Path $stage 'node_modules/node-pty')){throw 'Legacy node-pty must not be included in the desktop payload'}
-# Node and the native npm CLI are required for Pi and its package installation.
-# Only the runtime is installed; no Electron or build-only node_modules.
-$v='24.16.0'
-$zipName="node-v$v-win-x64.zip"
-$cache=Join-Path $root '.desktop-cache'
-New-Item -ItemType Directory -Force $cache|Out-Null
-$zip=Join-Path $cache $zipName
-$expected='edaca9bd58ec8e92037dac4e877d52f6b8f430b81c18b57e264b4e2fb111cd56'
-if(-not (Test-Path $zip)){
- if($SkipRuntimeDownload){throw 'Pinned Node distribution not cached'}
- Invoke-WebRequest "https://nodejs.org/dist/v$v/$zipName" -OutFile $zip
-}
-if((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected){throw 'Node archive checksum mismatch'}
-$unpack=Join-Path $cache "node-v$v-win-x64"
-if(Test-Path $unpack){Remove-Item -LiteralPath $unpack -Recurse -Force}
-Expand-Archive -LiteralPath $zip -DestinationPath $cache -Force
 $bin=Join-Path $stage 'bin'
-New-Item -ItemType Directory -Force $bin,(Join-Path $bin 'node_modules')|Out-Null
-foreach($path in 'node.exe','npm.cmd','npx.cmd','LICENSE'){Copy-Item -LiteralPath (Join-Path $unpack $path) -Destination $bin}
-Copy-Item -LiteralPath (Join-Path $unpack 'node_modules/npm') -Destination (Join-Path $bin 'node_modules/npm') -Recurse -Force
+New-Item -ItemType Directory -Force $bin | Out-Null
 # Ship the native PTY with the desktop runtime.
 cargo build --release --locked --manifest-path (Join-Path $root 'daemon/Cargo.toml') --target-dir (Join-Path $root 'daemon/target')
 if($LASTEXITCODE -ne 0){throw 'Rust daemon build failed'}
