@@ -10,6 +10,7 @@ import { builtinPromptPath } from "./prompt-store.mjs";
 export class Agent {
   #client;
   #listeners = new Set();
+  #seqId = 0;
   #busy = false;
   #retrying = false;
   #startup;
@@ -127,7 +128,8 @@ export class Agent {
     if (!this.#closed) this.#emit({ type: "connection_error", error: error.message, busy: false });
   }
   #emit(event) {
-    for (const listener of this.#listeners) listener(event);
+    const sequenced = { ...event, seqId: ++this.#seqId };
+    for (const listener of this.#listeners) listener(sequenced);
   }
   subscribe(listener) {
     this.#listeners.add(listener);

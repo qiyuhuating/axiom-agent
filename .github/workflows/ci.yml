@@ -19,6 +19,7 @@ jobs:
       - run: npm run lint
       - run: npm run build:ui
       - run: npm audit --omit=dev --audit-level=high --registry=https://registry.npmjs.org
+      - run: cargo build --locked --manifest-path daemon/Cargo.toml
       - run: npm run test:coverage
       - name: Verify native daemon contracts
         run: cargo test --locked --manifest-path daemon/Cargo.toml

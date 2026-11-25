@@ -99,6 +99,7 @@ test("startup rejects ambiguous deployment settings and explicit missing configu
     });
   await assert.rejects(load(), /ENOENT/);
   for (const [overrides, reason] of [
+    [{ schemaVersion: 2 }, /schemaVersion/],
     [{ runtimePort: "4790" }, /runtimePort must/],
     [{ runtimePort: 4789 }, /distinct/],
     [{ port: 0 }, /explicit runtimePort/],

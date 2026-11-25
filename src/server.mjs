@@ -116,16 +116,6 @@ const server = createServer(async (req, res) => {
           if (res.writableLength > 4 * 1024 * 1024) res.destroy();
           else res.write("data: " + JSON.stringify(event) + "\n\n");
         });
-        void agent.start().catch((error) =>
-          res.write(
-            "data: " +
-              JSON.stringify({
-                type: "connection_error",
-                error: error.message,
-              }) +
-              "\n\n",
-          ),
-        );
         const heartbeat = setInterval(() => res.write(": heartbeat\n\n"), 15000);
         res.on("close", () => {
           off();

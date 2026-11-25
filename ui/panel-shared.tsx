@@ -1,4 +1,5 @@
 import type React from "react";
+import { useCallback, useEffect, useState } from "react";
 export async function api(path: string, data?: unknown) {
   const r = await fetch(
     "/api/" + path,
@@ -43,3 +44,20 @@ export function Header({ children }: React.PropsWithChildren) {
   return <div className="wb-bar">{children}</div>;
 }
 export const dirtyTabs = new Set<string>();
+
+export function useLoad(path: string, initial: any) {
+  const [value, setValue] = useState(initial),
+    [error, setError] = useState("");
+  const load = useCallback(async () => {
+    try {
+      setValue(await api(path));
+      setError("");
+    } catch (e) {
+      setError(msg(e));
+    }
+  }, [path]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  return { value, error, load, setValue, setError };
+}

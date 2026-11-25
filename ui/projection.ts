@@ -407,7 +407,9 @@ export function removeDialog(id: string) {
 let recovering = false;
 export function connect() {
   const events = new EventSource("/api/events");
+  let lastSeqId = 0;
   events.onopen = () => {
+    lastSeqId = 0;
     update({ connected: true });
     void run(async () => {
       await refresh();
@@ -415,7 +417,13 @@ export function connect() {
     });
   };
   events.onerror = () => update({ connected: false });
-  events.onmessage = ({ data }) => handleEvent(JSON.parse(data));
+  events.onmessage = ({ data }) => {
+    const event = JSON.parse(data);
+    if (event.seqId <= lastSeqId) return;
+    if (lastSeqId && event.seqId !== lastSeqId + 1) void run(refresh);
+    lastSeqId = event.seqId;
+    handleEvent(event);
+  };
   return () => {
     events.close();
     generation++;

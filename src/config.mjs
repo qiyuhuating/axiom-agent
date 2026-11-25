@@ -11,11 +11,13 @@ const user =
 if (!user || typeof user !== "object" || Array.isArray(user))
   throw Error("Expected a JSON configuration object");
 export const config = {
+  schemaVersion: 1,
   port: 4789,
   workspace: "workspace",
   sessionDir: ".sessions",
   ...user,
 };
+if (config.schemaVersion !== 1) throw Error("Unsupported axiom.config.json schemaVersion");
 function port(name, value, min) {
   if (!Number.isInteger(value) || value < min || value > 65535)
     throw Error(name + " must be an integer between " + min + " and 65535");
@@ -27,26 +29,18 @@ if (process.env.AXIOM_DESKTOP === "1") {
 }
 if (config.terminalBackend !== undefined && !["node", "rust"].includes(config.terminalBackend))
   throw Error("Invalid terminalBackend");
-// Installed Windows builds contain the Rust daemon but not the reference
-// Node terminal implementation. Keep the original configuration intact for rollback.
-const packaged = process.platform === "win32" && existsSync(resolve(root, "bin/axiom-daemon.exe"));
-if (packaged) {
-  config.terminalBackend = "rust";
-  config.rustTerminalPort ??= (config.runtimePort ?? config.port + 1) + 1;
-  config.importLegacyTerminalHistory ??= true;
-} else {
-  config.terminalBackend ??= "node";
-}
+// Accept historical backend selections without rewriting the user's configuration.
+config.terminalBackend = "rust";
+config.importLegacyTerminalHistory ??= true;
 if (config.port === 0 && config.runtimePort === undefined)
   throw Error("An ephemeral host port requires an explicit runtimePort");
 config.runtimePort ??= config.port + 1;
 port("runtimePort", config.runtimePort, 1);
 if (config.runtimePort === config.port) throw Error("Runtime and workbench ports must be distinct");
-if (config.terminalBackend === "rust") {
-  port("rustTerminalPort", config.rustTerminalPort, 1024);
-  if ([config.port, config.runtimePort].includes(config.rustTerminalPort))
-    throw Error("A distinct rustTerminalPort is required");
-}
+config.rustTerminalPort ??= config.runtimePort + 1;
+port("rustTerminalPort", config.rustTerminalPort, 1024);
+if ([config.port, config.runtimePort].includes(config.rustTerminalPort))
+  throw Error("A distinct rustTerminalPort is required");
 for (const key of ["workspace", "sessionDir"]) {
   if (typeof config[key] !== "string" || !config[key].trim())
     throw Error(key + " must be a nonempty path");

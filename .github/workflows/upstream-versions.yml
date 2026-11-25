@@ -1,0 +1,24 @@
+name: Upstream version check
+on:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  versions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare pinned versions with upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          dsh=$(jq -r .commit vendor-manifest.json)
+          head=$(git ls-remote --exit-code https://github.com/deepseek-ai/deepseek-harness.git HEAD | cut -f1)
+          pi=$(jq -r '.dependencies["@earendil-works/pi-coding-agent"]' package.json)
+          latest=$(npm view @earendil-works/pi-coding-agent dist-tags.latest --registry=https://registry.npmjs.org)
+          printf '| Dependency | Pinned | Available |\n|---|---|---|\n| DeepSeek Harness | %s | %s |\n| Pi | %s | %s |\n' "$dsh" "$head" "$pi" "$latest" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$dsh" != "$head" || "$pi" != "$latest" ]]; then
+            echo "::notice::Upstream changes are available for review"
+          fi

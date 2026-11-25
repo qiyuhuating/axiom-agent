@@ -98,6 +98,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let config = data.join("axiom.config.json");
     if !config.exists() {
         let defaults = serde_json::json!({
+            "schemaVersion": 1,
             "workspace": data.join("workspace"),
             "sessionDir": data.join("sessions"),
             "runtimePort": 4798,

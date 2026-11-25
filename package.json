@@ -11,7 +11,7 @@
     "start": "node src/server.mjs",
     "pi": "node scripts/pi.mjs",
     "build:ui": "node scripts/build-ui.mjs",
-    "prestart": "npm run build:ui",
+    "prestart": "cargo build --locked --manifest-path daemon/Cargo.toml && npm run build:ui",
     "runtime:stop": "node scripts/runtime-stop.mjs",
     "prepare:desktop": "pwsh -NoProfile -File scripts/prepare-desktop.ps1",
     "desktop:build": "npm exec --yes --package=@tauri-apps/cli@2.12.5 -- tauri build --bundles nsis",
@@ -52,7 +52,6 @@
     "lexical": "0.49.0",
     "lucide-react": "1.75.0",
     "markdown-it": "15.0.3",
-    "node-pty": "1.1.0",
     "react": "18.3.1",
     "react-dom": "18.3.1"
   },

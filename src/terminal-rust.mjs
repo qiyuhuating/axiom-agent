@@ -8,14 +8,13 @@ import { launchLogged } from "./log-launch.mjs";
 import { runtimeToken } from "./runtime-auth.mjs";
 import { createCordisTerminalAdapter } from "./terminal-cordis.mjs";
 
-// Experimental backend; the existing job runtime and native Node PTY remain
-// the default. A distinct archive prevents two processes writing one history.
 export async function createRustTerminalBackend() {
   const port = config.rustTerminalPort;
   const binary = resolve(
     root,
     config.rustTerminalBinary ||
-      (process.platform === "win32" ? "bin/axiom-daemon.exe" : "bin/axiom-daemon"),
+      (existsSync(resolve(root, "bin")) ? "bin/" : "daemon/target/debug/") +
+        (process.platform === "win32" ? "axiom-daemon.exe" : "axiom-daemon"),
   );
   const base = "http://127.0.0.1:" + port;
   const headers = { Authorization: "Bearer " + runtimeToken };
