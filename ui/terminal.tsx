@@ -11,7 +11,7 @@ function terminalTheme() {
     background: style.getPropertyValue("--bg").trim(),
     foreground: style.getPropertyValue("--ink").trim(),
     cursor: style.getPropertyValue("--ink").trim(),
-    selectionBackground: dark ? "#43454a" : "#d3e2ff",
+    selectionBackground: style.getPropertyValue("--pi-active").trim(),
     red: dark ? "#f25a5a" : "#dc2626",
     green: dark ? "#4ed17e" : "#15803d",
     blue: dark ? "#7aaaff" : "#2563eb",
@@ -40,11 +40,11 @@ export default function TerminalView() {
       eventSource: EventSource | undefined,
       observer: ResizeObserver | undefined;
     const term = new Terminal({
-      fontFamily: "Consolas, monospace",
+      fontFamily: getComputedStyle(document.body).getPropertyValue("--pi-code-font").trim(),
       fontSize: 14,
       scrollback: 2000,
       theme: terminalTheme(),
-      cursorBlink: true,
+      cursorBlink: !matchMedia("(prefers-reduced-motion: reduce)").matches,
       allowProposedApi: false,
       disableStdin: true,
     });

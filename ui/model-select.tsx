@@ -96,7 +96,7 @@ export function PiModelSelect({
 
   const onKeys = (event: KeyboardEvent<HTMLDivElement>) => {
     if (
-      (event.key === "Tab" || event.key === "Enter") &&
+      (event.key === "Enter" || (event.key === "Tab" && !event.shiftKey)) &&
       pane === "model" &&
       document.activeElement === search.current
     ) {
@@ -105,7 +105,8 @@ export function PiModelSelect({
       );
       if (first) {
         event.preventDefault();
-        first.click();
+        if (event.key === "Enter") first.click();
+        else first.focus();
         return;
       }
     }
@@ -147,7 +148,8 @@ export function PiModelSelect({
       setPending(false);
     }
   };
-  const currentLabel = current?.id ?? "选择模型";
+  const configured = Boolean(current?.id && current.id !== "unknown");
+  const currentLabel = configured ? current?.id : "选择模型";
 
   return (
     <div className={css.root + " axiom-model-select"} style={style}>
@@ -161,7 +163,11 @@ export function PiModelSelect({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-busy={pending}
-        title={[current?.provider, current?.id, effort].filter(Boolean).join(" / ")}
+        title={
+          configured
+            ? [current?.provider, current?.id, effort].filter(Boolean).join(" / ")
+            : "未选择模型"
+        }
         onClick={() => {
           if (open) close();
           else {
@@ -172,7 +178,7 @@ export function PiModelSelect({
         }}
       >
         <span className={css.triggerLabel}>{currentLabel}</span>
-        {effort && <span className={css.triggerEffort}>{effort}</span>}
+        {configured && effort && <span className={css.triggerEffort}>{effort}</span>}
         {pending ? (
           <LoaderCircle size={12} className="axiom-model-spinner" />
         ) : (
@@ -264,7 +270,13 @@ export function PiModelSelect({
                           })}
                         </div>
                       ))}
-                      {!groups.length && <div className={css.empty}>没有匹配的模型</div>}
+                      {!groups.length && (
+                        <div className={css.empty}>
+                          {models.length
+                            ? "没有匹配的模型"
+                            : "尚未配置模型，请在设置中添加提供商。"}
+                        </div>
+                      )}
                     </div>
                   </>
                 ) : (

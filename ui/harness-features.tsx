@@ -1,17 +1,17 @@
 import { ChevronDown, Target } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import deliveryCss from "../vendor/dsh/capabilities/Deliverables.module.css";
 import goalCss from "../vendor/dsh/capabilities/GoalBar.module.css";
 import planCss from "../vendor/dsh/capabilities/PlanPreview.module.css";
 import { PresentedFileCard } from "../vendor/dsh/capabilities/PresentedFileCard.tsx";
 import teamCss from "../vendor/dsh/capabilities/TeamBoard.module.css";
-import trajectoryCss from "../vendor/dsh/capabilities/TrajectoryTable.module.css";
 import { TodoPanel } from "../vendor/dsh/conversation/TodoPanel.tsx";
 import { Button } from "../vendor/dsh/primitives/Button.tsx";
 import { Modal } from "../vendor/dsh/primitives/Modal.tsx";
 import { StateDot } from "../vendor/dsh/primitives/StateDot.tsx";
 import { maskCredentials } from "./credential-mask.ts";
 import { api } from "./panel-shared.tsx";
+import { PanelSearch } from "./pi-primitives.tsx";
 import {
   action,
   appendDraft,
@@ -333,74 +333,122 @@ export function TeamOverview({ jobs }: { jobs: Job[] }) {
     </>
   );
 }
-export function TraceLedger({ tools, busy }: { tools: Tool[]; busy: boolean }) {
-  const [selected, setSelected] = useState<string | null>(null);
-  const active = tools.find((t) => t.id === selected);
+function toolStatus(tool: Tool, busy: boolean) {
+  return tool.finished
+    ? tool.failed
+      ? "failed"
+      : "done"
+    : busy && tool.started !== undefined
+      ? "running"
+      : "pending";
+}
+const toolStatusLabel = { failed: "失败", done: "完成", running: "运行中", pending: "未记录结果" };
+function ToolDetails({ tool }: { tool: Tool }) {
   const show = (value: unknown) =>
     maskCredentials(
       JSON.stringify(value, (_k, v) => (typeof v === "string" ? maskCredentials(v) : v), 2) ?? "",
     );
   return (
-    <div className={trajectoryCss.split}>
-      <div className={trajectoryCss.tablePane}>
-        <table className={trajectoryCss.table}>
-          <thead>
-            <tr>
-              <th>工具</th>
-              <th>状态</th>
-              <th>耗时</th>
-            </tr>
-          </thead>
-          <tbody>
-            {tools.map((tool) => (
-              <tr
-                key={tool.id}
-                data-kind="tool"
-                data-selected={tool.id === selected}
-                data-error={tool.failed || undefined}
-              >
-                <td className={trajectoryCss.content}>
-                  <button
-                    type="button"
-                    onClick={() => setSelected(selected === tool.id ? null : tool.id)}
-                  >
-                    {maskCredentials(tool.name)}
-                  </button>
-                </td>
-                <td>
-                  {tool.finished ? (
-                    <StateDot state={tool.failed ? "error" : "done"} />
-                  ) : (
-                    <StateDot state={busy && tool.started ? "ongoing" : "idle"} />
-                  )}{" "}
-                  {tool.finished
-                    ? tool.failed
-                      ? "失败"
-                      : "完成"
-                    : busy && tool.started
-                      ? "运行"
-                      : "未记录结果"}
-                </td>
-                <td>
-                  {tool.started !== undefined && tool.ended !== undefined
-                    ? Math.max(0, tool.ended - tool.started) + " ms"
-                    : "—"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {active && (
-          <details open>
-            <summary>{maskCredentials(active.name)}</summary>
-            <pre>{show({ arguments: active.args, result: active.result })}</pre>
-          </details>
-        )}
-      </div>
+    <div className="pi-tool-detail">
+      <h4>调用参数</h4>
+      <pre>{show(tool.args) || "无记录"}</pre>
+      <h4>返回结果</h4>
+      <pre>{show(tool.result) || "无记录"}</pre>
     </div>
   );
 }
-
+export function TraceLedger({ tools, busy }: { tools: Tool[]; busy: boolean }) {
+  const [selected, setSelected] = useState<string | null>(null);
+  const [filter, setFilter] = useState<"all" | "running" | "failed" | "done" | "pending">("all");
+  const [query, setQuery] = useState("");
+  const [limit, setLimit] = useState(100);
+  const { counts, matching } = useMemo(() => {
+    const counts = { all: tools.length, running: 0, failed: 0, done: 0, pending: 0 };
+    const matching: Tool[] = [];
+    const search = query.trim().toLowerCase();
+    for (let index = tools.length - 1; index >= 0; index--) {
+      const tool = tools[index];
+      const status = toolStatus(tool, busy);
+      counts[status]++;
+      if (
+        (filter === "all" || filter === status) &&
+        (!search || maskCredentials(tool.name).toLowerCase().includes(search))
+      )
+        matching.push(tool);
+    }
+    return { counts, matching };
+  }, [tools, busy, filter, query]);
+  return (
+    <div className="pi-tool-ledger">
+      <div className="pi-tool-toolbar">
+        <fieldset className="pi-tool-filters" aria-label="筛选工具状态">
+          {(["all", "running", "failed", "done", "pending"] as const).map((status) => (
+            <button
+              type="button"
+              key={status}
+              aria-pressed={filter === status}
+              onClick={() => {
+                setFilter(status);
+                setLimit(100);
+              }}
+            >
+              {status === "all" ? "全部" : toolStatusLabel[status]} <b>{counts[status]}</b>
+            </button>
+          ))}
+        </fieldset>
+        <PanelSearch
+          label="筛选工具名称"
+          value={query}
+          onChange={(value) => {
+            setQuery(value);
+            setLimit(100);
+          }}
+        />
+        <p className="pi-tool-caption">{matching.length} 条记录 · 最新优先</p>
+      </div>
+      {matching.length === 0 && (
+        <p className="pi-tool-empty">
+          {tools.length ? "没有匹配记录" : "Pi 执行工具后，调用记录将显示在这里。"}
+        </p>
+      )}
+      {matching.slice(0, limit).map((tool) => {
+        const status = toolStatus(tool, busy);
+        const open = selected === tool.id;
+        return (
+          <section key={tool.id} className="pi-tool-entry" data-kind="tool" data-status={status}>
+            <button
+              type="button"
+              className="pi-tool-row"
+              aria-expanded={open}
+              onClick={() => setSelected(open ? null : tool.id)}
+            >
+              <span className="pi-tool-dot" aria-hidden="true" />
+              <span className="pi-tool-name">
+                <strong>{maskCredentials(tool.name)}</strong>
+                <small>
+                  {tool.turn === undefined ? "当前回合" : "回合 " + tool.turn} ·{" "}
+                  {toolStatusLabel[status]}
+                </small>
+              </span>
+              <span className="pi-tool-duration">
+                {tool.started !== undefined && tool.ended !== undefined
+                  ? Math.max(0, tool.ended - tool.started) + " ms"
+                  : "—"}
+              </span>
+              <ChevronDown size={15} aria-hidden="true" />
+            </button>
+            {open && <ToolDetails tool={tool} />}
+          </section>
+        );
+      })}
+      {matching.length > limit && (
+        <button className="pi-more-button" type="button" onClick={() => setLimit(limit + 100)}>
+          查看更早的工具记录（剩余 {matching.length - limit} 条）
+        </button>
+      )}
+    </div>
+  );
+}
 export function ObservedChanges({ tools }: { tools: Tool[] }) {
   const rows = tools.flatMap((tool) => {
     const change = (

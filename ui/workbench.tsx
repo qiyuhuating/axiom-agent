@@ -9,6 +9,7 @@ import React, {
 import { createPortal } from "react-dom";
 import { decodeRequest } from "../src/interaction-protocol.mjs";
 import { useModalLayer } from "../vendor/dsh/primitives/useModalLayer.ts";
+import { FileExplorer } from "./file-explorer.tsx";
 import { JobDetails, TeamOverview, TraceLedger } from "./harness-features.tsx";
 import { api, dirtyTabs, errorBox, Header, msg } from "./panel-shared.tsx";
 import {
@@ -54,7 +55,6 @@ import {
 } from "lucide-react";
 import { parseBrowserAddress } from "../vendor/dsh/browser/url.ts";
 import { DockController, DockLayout } from "../vendor/dsh/dockkit/index.ts";
-import { FileTree } from "../vendor/dsh/files/FileTree.tsx";
 import { Button } from "../vendor/dsh/primitives/Button.tsx";
 import { Modal } from "../vendor/dsh/primitives/Modal.tsx";
 import "@xterm/xterm/css/xterm.css";
@@ -66,7 +66,6 @@ import questionCss from "../vendor/dsh/capabilities/QuestionComposer.module.css"
 import guideCss from "../vendor/dsh/guide/GuideBody.module.css";
 import { CompassGlyph } from "../vendor/dsh/guide/GuideTitle.tsx";
 import browserCss from "../vendor/dsh/sidebar/Browser.module.css";
-import filesCss from "../vendor/dsh/sidebar/FilesBody.module.css";
 import settingsCss from "../vendor/dsh/sidebar/SettingsRoot.module.css";
 import sidebarCss from "../vendor/dsh/sidebar/SidebarRoot.module.css";
 import panelCss from "../vendor/dsh/sidebar-right/SidebarRight.module.css";
@@ -175,76 +174,9 @@ function useLoad(path: string, initial: any) {
   return { value, error, load, setValue, setError };
 }
 function Files() {
-  const [levels, setLevels] = useState<Record<string, any[]>>({}),
-    [expanded, setExpanded] = useState<string[]>([]),
-    [loading, setLoading] = useState<Record<string, any>>({
-      "": { loading: true },
-    }),
-    [current, setCurrent] = useState("");
-  const load = useCallback(async (path: string) => {
-    setLoading((x) => ({ ...x, [path]: { loading: true } }));
-    try {
-      const entries = await api("files?path=" + encodeURIComponent(path));
-      setLevels((x) => ({ ...x, [path]: entries }));
-      setLoading((x) => ({ ...x, [path]: {} }));
-    } catch (e) {
-      setLoading((x) => ({ ...x, [path]: { failure: msg(e) } }));
-    }
-  }, []);
-  useEffect(() => {
-    void load("");
-  }, [load]);
+  const workspace = useProjectionField("state")?.workspace;
   return (
-    <div className={"wb-panel " + filesCss.page}>
-      <div className={filesCss.header}>
-        <strong className="file-page-title">工作区文件</strong>
-        <button
-          type="button"
-          className={filesCss.tool}
-          title="刷新文件"
-          aria-label="刷新文件"
-          onClick={() => {
-            void load("");
-            for (const dir of expanded) void load(dir);
-          }}
-        >
-          <RefreshCw size={15} />
-        </button>
-      </div>
-      <div className={filesCss.content}>
-        <div className={filesCss.navigator + " " + filesCss.wholePage}>
-          <div className={filesCss.body}>
-            <FileTree
-              root=""
-              entries={Object.values(levels).flat()}
-              expanded={expanded}
-              current={current}
-              directories={loading}
-              t={(key) =>
-                ({
-                  loading: "加载中…",
-                  empty: "空目录",
-                  emptyHidden: "没有可见文件",
-                  truncated: "部分结果",
-                  "entry.noViewer": "无可用预览",
-                  "entry.other": "不支持打开",
-                })[key] || key
-              }
-              onToggle={(entry, next) => {
-                setExpanded((xs) =>
-                  next ? [...xs, entry.path] : xs.filter((x) => x !== entry.path),
-                );
-                if (next) void load(entry.path);
-              }}
-              onOpen={(entry) => {
-                setCurrent(entry.path);
-                open("editor", entry.name, entry.path);
-              }}
-            />
-          </div>
-        </div>
-      </div>
-    </div>
+    <FileExplorer key={workspace} onOpen={(entry) => open("editor", entry.name, entry.path)} />
   );
 }
 function GitDiff() {
@@ -1252,37 +1184,46 @@ function Jobs() {
     </div>
   );
 }
+const guideDescriptions: Record<string, string> = {
+  files: "浏览与编辑工作区文件",
+  diff: "检查暂存和未暂存变更",
+  terminal: "运行本地命令",
+  settings: "配置模型与应用",
+  resources: "管理 Skills 和 MCP",
+  jobs: "查看任务、计划与进度",
+  browser: "在工作台中打开网页",
+  trajectory: "检查工具状态及调用详情",
+};
 function Guide() {
   return (
-    <div className={guideCss.guide}>
-      <span className={guideCss.hero}>
-        <CompassGlyph size={56} />
-      </span>
-      {Object.entries(names)
-        .filter(([kind]) => kind !== "guide")
-        .map(([kind, label]) => {
-          const Icon = icons[kind as keyof typeof icons];
-          return (
-            <button
-              type="button"
-              key={kind}
-              className={guideCss.entry}
-              title={label}
-              onClick={() => open(kind)}
-            >
-              <span className={guideCss.entryIcon}>
-                <Icon size={22} />
-              </span>
-              <span className={guideCss.entryText}>
-                <span className={guideCss.entryTitle}>{label}</span>
-              </span>
-            </button>
-          );
-        })}
+    <div className="pi-workbench-guide">
+      <div className="pi-guide-heading">
+        <span className="pi-guide-kicker">PI WORKBENCH</span>
+        <h2>工作台</h2>
+        <p>打开所需工具，保持当前任务的上下文。</p>
+      </div>
+      {Object.entries(guideDescriptions).map(([kind, description]) => {
+        const Icon = icons[kind as keyof typeof icons];
+        return (
+          <button
+            type="button"
+            key={kind}
+            className="pi-guide-entry"
+            aria-label={names[kind as keyof typeof names]}
+            onClick={() => open(kind)}
+          >
+            <Icon size={20} aria-hidden="true" />
+            <span>
+              <strong>{names[kind as keyof typeof names]}</strong>
+              <small>{description}</small>
+            </span>
+            <ArrowRight size={15} aria-hidden="true" />
+          </button>
+        );
+      })}
     </div>
   );
 }
-
 function Trajectory() {
   const tools = useProjectionField("tools");
   const busy = useProjectionField("busy");
@@ -1337,38 +1278,40 @@ export function SidebarPanels() {
   const activeTab = pane?.kind === "pane" && pane.activeTabId ? state.tabs[pane.activeTabId] : null;
   return (
     <div className={sidebarCss.panelList + " axiom-panel-list"}>
-      {(["files", "terminal", "browser", "diff", "jobs", "resources"] as const).map((kind) => {
-        const Icon = icons[kind];
-        const active = workbenchOpen && activeTab?.kind === kind;
-        return (
-          <div
-            key={kind}
-            className={[
-              sidebarCss.panelEntry,
-              !collapsed && sidebarCss.panelEntryWide,
-              active && sidebarCss.panelEntryActive,
-            ]
-              .filter(Boolean)
-              .join(" ")}
-          >
-            <button
-              type="button"
-              className={sidebarCss.panelRow}
-              title={names[kind]}
-              aria-label={names[kind]}
-              aria-current={active ? "page" : undefined}
-              onClick={() => {
-                openPanel(kind);
-              }}
+      {(["files", "terminal", "browser", "diff", "jobs", "resources", "trajectory"] as const).map(
+        (kind) => {
+          const Icon = icons[kind];
+          const active = workbenchOpen && activeTab?.kind === kind;
+          return (
+            <div
+              key={kind}
+              className={[
+                sidebarCss.panelEntry,
+                !collapsed && sidebarCss.panelEntryWide,
+                active && sidebarCss.panelEntryActive,
+              ]
+                .filter(Boolean)
+                .join(" ")}
             >
-              <span className={sidebarCss.panelGlyph} aria-hidden="true">
-                <Icon size={collapsed ? 18 : 16} />
-              </span>
-              <span className={sidebarCss.panelTitle}>{names[kind]}</span>
-            </button>
-          </div>
-        );
-      })}
+              <button
+                type="button"
+                className={sidebarCss.panelRow}
+                title={names[kind]}
+                aria-label={names[kind]}
+                aria-current={active ? "page" : undefined}
+                onClick={() => {
+                  openPanel(kind);
+                }}
+              >
+                <span className={sidebarCss.panelGlyph} aria-hidden="true">
+                  <Icon size={collapsed ? 18 : 16} />
+                </span>
+                <span className={sidebarCss.panelTitle}>{names[kind]}</span>
+              </button>
+            </div>
+          );
+        },
+      )}
     </div>
   );
 }
@@ -1457,7 +1400,7 @@ export function Workbench() {
           intents={proxy}
           labels={labels}
           dropZones="horizontal"
-          keepMounted={() => true}
+          keepMounted={(tab) => !["guide", "trajectory", "diff"].includes(tab.kind)}
           renderTab={(tab) => <div className={panelCss.tabBody}>{renderTab(tab)}</div>}
           renderTabTitle={(tab) => {
             const Icon = icons[tab.kind as keyof typeof icons];

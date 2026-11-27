@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,6 +18,9 @@ portServer.listen(0, "127.0.0.1");
 await once(portServer, "listening");
 const runtimePort = portServer.address().port;
 await new Promise((resolve) => portServer.close(resolve));
+await mkdir(join(tmp, "workspace", "src"), { recursive: true });
+await writeFile(join(tmp, "workspace", "src", "fixture.ts"), "export const answer = 42;\n");
+await writeFile(join(tmp, "workspace", "readme.md"), "# Fixture\n");
 const config = join(tmp, "config.json");
 await writeFile(config, JSON.stringify({
   workspace: join(tmp, "workspace"), sessionDir: join(tmp, "sessions"),
@@ -179,6 +182,147 @@ try {
       });
       assert.deepEqual(counts, { draftChanges: 0, streamChanges: 2, streamLength: 100 });
       console.log("PI_SUBSCRIPTION_PASS", JSON.stringify(counts));
+
+      // The explorer must open real workspace entries; collapsing and
+      // reopening a directory must not issue a second listing request.
+      let directoryRequests = 0;
+      page.on("request", request => {
+        const url = new URL(request.url());
+        if (url.pathname === "/api/files" && url.searchParams.get("path") === "src") directoryRequests++;
+      });
+      await page.locator("#sidebar-panels").getByRole("button", { name: "文件", exact: true }).click();
+      const explorer = page.locator(".pi-file-explorer");
+      const directory = explorer.locator('[data-path="src"]');
+      const file = explorer.locator('[data-path="src/fixture.ts"]');
+      await directory.waitFor();
+      await directory.focus();
+      await page.keyboard.press("ArrowRight");
+      await file.waitFor();
+      assert.equal(directoryRequests, 1);
+      await page.keyboard.press("ArrowRight");
+      assert.equal(await file.evaluate(el => document.activeElement === el), true);
+      await page.keyboard.press("ArrowLeft");
+      assert.equal(await directory.evaluate(el => document.activeElement === el), true);
+      await directory.click();
+      await file.waitFor({ state: "detached" });
+      await directory.click();
+      await file.waitFor();
+      assert.equal(directoryRequests, 1);
+      await explorer.getByRole("searchbox", { name: "筛选已加载文件" }).fill("fixture.ts");
+      await file.waitFor();
+      assert.equal(await explorer.locator(".pi-file-row").count(), 1);
+      await explorer.getByRole("searchbox", { name: "筛选已加载文件" }).fill("");
+      if (process.env.AXIOM_TEST_SCREENSHOTS) {
+        await page.screenshot({ path: join(process.env.AXIOM_TEST_SCREENSHOTS, "pi-files.jpg"), quality: 85, animations: "disabled" });
+      }
+      await file.click();
+      await page.locator(".inspector .cm-editor").waitFor();
+      assert.match(await page.locator(".inspector .cm-editor").innerText(), /answer = 42/);
+      const keywordColor = await page.locator(".inspector .cm-content").evaluate(el => {
+        const keyword = Array.from(el.querySelectorAll("span")).find(span => span.textContent === "export");
+        return keyword && getComputedStyle(keyword).color;
+      });
+      assert.equal(keywordColor, "rgb(198, 164, 242)");
+      await page.locator("#sidebar-panels").getByRole("button", { name: "文件", exact: true }).click();
+      await directory.waitFor();
+      assert.equal(directoryRequests, 1);
+      await explorer.getByRole("button", { name: "刷新文件" }).click();
+      await page.waitForFunction(() => !document.querySelector(".pi-file-explorer [role=status]"));
+      assert.equal(directoryRequests, 2);
+      console.log("PI_EXPLORER_PASS", JSON.stringify({ directoryRequests, cachedReopen: true, fileOpened: true }));
+
+      // Reopen a large synthetic persisted conversation using the real
+      // snapshot protocol. No paid provider or filesystem changes are needed.
+      const history = Array.from({ length: 2000 }, (_, i) => ({
+        role: i % 2 === 0 ? "user" : "assistant",
+        content: [{ type: "text", text: "History fixture " + i + "\n" + "A meaningful line of history.\n".repeat(3) }]
+      }));
+      const toolResults = Array.from({ length: 500 }, (_, i) => ({
+        role: "toolResult", toolCallId: "trace-" + i,
+        toolName: i % 2 ? "read" : "write", isError: i % 10 === 0,
+        content: [{ type: "text", text: "Tool fixture result " + i }]
+      }));
+      await page.route("**/api/snapshot", async route => {
+        const response = await route.fetch();
+        const snapshot = await response.json();
+        await route.fulfill({ response, json: { ...snapshot, messages: [...history, ...toolResults] } });
+      });
+      await page.reload();
+      await page.getByText("History fixture 1999", { exact: false }).waitFor();
+      const articles = page.locator("#transcript [data-history-index]");
+      assert.equal(await articles.count(), 80);
+      assert.equal(await articles.first().getAttribute("data-history-index"), "1920");
+      const transcript = page.locator("#transcript");
+      await transcript.evaluate(el => { el.scrollTop = 0; });
+      const loadOlder = page.getByRole("button", { name: /加载更早消息/ });
+      await loadOlder.waitFor();
+      const oldAnchor = page.locator('[data-history-index="1920"]');
+      const oldTop = await oldAnchor.evaluate(el => el.getBoundingClientRect().top);
+      await loadOlder.click();
+      assert.equal(await articles.count(), 160);
+      const newTop = await oldAnchor.evaluate(el => el.getBoundingClientRect().top);
+      assert.ok(Math.abs(oldTop - newTop) <= 3, JSON.stringify({ oldTop, newTop }));
+      await page.getByRole("button", { name: "仅显示最近消息" }).click();
+      assert.equal(await articles.count(), 80);
+      await page.getByRole("button", { name: "回到最新消息" }).click();
+      await page.waitForFunction(() => {
+        const el = document.querySelector("#transcript");
+        return el.scrollHeight - el.scrollTop - el.clientHeight < 2;
+      });
+      console.log("PI_HISTORY_PASS", JSON.stringify({ records: 2000, initialMounted: 80, expandedMounted: 160, anchorDrift: Math.abs(oldTop - newTop) }));
+
+      await page.locator("#sidebar-panels").getByRole("button", { name: "执行轨迹", exact: true }).click();
+      const ledger = page.locator(".pi-tool-ledger");
+      await ledger.waitFor();
+      assert.equal(await ledger.locator('[data-kind="tool"]').count(), 100);
+      await ledger.getByRole("button", { name: "失败 50" }).click();
+      assert.equal(await ledger.locator('[data-kind="tool"]').count(), 50);
+      await ledger.locator(".pi-tool-row").first().click();
+      assert.match(await ledger.locator(".pi-tool-detail").innerText(), /Tool fixture result 490/);
+      await ledger.getByRole("searchbox", { name: "筛选工具名称" }).fill("read");
+      assert.equal(await ledger.locator('[data-kind="tool"]').count(), 0);
+      await ledger.getByRole("searchbox", { name: "筛选工具名称" }).fill("");
+      await ledger.getByRole("button", { name: "全部 500" }).click();
+      await ledger.getByRole("button", { name: /查看更早的工具记录/ }).click();
+      assert.equal(await ledger.locator('[data-kind="tool"]').count(), 200);
+      if (process.env.AXIOM_TEST_SCREENSHOTS) {
+        await page.screenshot({ path: join(process.env.AXIOM_TEST_SCREENSHOTS, "pi-trajectory.jpg"), quality: 85, animations: "disabled" });
+      }
+      await page.locator("#sidebar-panels").getByRole("button", { name: "文件", exact: true }).click();
+      await ledger.waitFor({ state: "detached" });
+      await page.locator("#sidebar-panels").getByRole("button", { name: "执行轨迹", exact: true }).click();
+      await ledger.waitFor();
+      assert.equal(await ledger.locator('[data-kind="tool"]').count(), 100);
+      console.log("PI_TRACE_PASS", JSON.stringify({ records: 500, initialMounted: 100, failed: 50, expandedMounted: 200, hiddenUnmounted: true }));
+      await page.unroute("**/api/snapshot");
+
+      // Tab from model search must move focus, not change the selected model.
+      const fixtureModels = Array.from({ length: 5 }, (_, i) => ({ provider: "fixture", id: "model-" + i }));
+      await page.route("**/api/models", route => route.fulfill({ json: fixtureModels }));
+      let modelActions = 0;
+      await page.route("**/api/action", route => {
+        if (route.request().postDataJSON()?.action === "model") {
+          modelActions++;
+          return route.fulfill({ json: {} });
+        }
+        return route.continue();
+      });
+      await page.reload();
+      await page.waitForFunction(() => document.querySelector("#status")?.textContent?.trim() === "就绪");
+      await page.locator("#models").click();
+      await page.getByRole("menuitem", { name: /^模型/ }).click();
+      const modelSearch = page.getByRole("textbox", { name: "搜索模型" });
+      await modelSearch.waitFor();
+      await modelSearch.fill("model-");
+      await page.keyboard.press("Tab");
+      assert.equal(await page.locator('[role="menuitemradio"]').first().evaluate(el => document.activeElement === el), true);
+      assert.equal(modelActions, 0);
+      await page.keyboard.press("Escape");
+      await page.keyboard.press("Escape");
+      await page.getByRole("menu", { name: "模型和思考强度" }).waitFor({ state: "detached" });
+      await page.unroute("**/api/models");
+      await page.unroute("**/api/action");
+      console.log("PI_MODEL_KEYBOARD_PASS", JSON.stringify({ modelActions, focusMoved: true }));
     }
     assert.deepEqual(errors, []);
     console.log("PI_LAYOUT_PASS", JSON.stringify({width,height,deviceScaleFactor,pixelWidth,pixelHeight,font:geometry.font}));

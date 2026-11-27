@@ -798,3 +798,109 @@ body.sidebar-collapsed .pi-shell #new {background:var(--pi-accent);}
 .pi-shell .axiom-conversation-body .composer form .axiom-input-controls .axiom-model-select {
   max-width:min(260px, 40vw);
 }
+
+/* Pi-owned workbench components, sharing shell tokens. */
+.pi-shell .pi-panel-header {display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px;border:0;min-height:64px;background:var(--pi-base);}
+.pi-panel-header > div {min-width:0;display:grid;gap:2px;}
+.pi-panel-header strong {font-size:16px;color:var(--pi-ink);font-weight:600;}
+.pi-panel-header small,.pi-guide-heading p {font-size:12px;color:var(--pi-muted);}
+.pi-icon-button {display:grid;place-items:center;flex:none;width:32px;height:32px;border:1px solid var(--pi-line);border-radius:7px;color:var(--pi-muted);background:var(--pi-surface);}
+.pi-panel-search {display:flex;align-items:center;gap:8px;margin:0 12px 10px;padding:7px 10px;border:1px solid var(--pi-line);border-radius:7px;background:var(--pi-surface);color:var(--pi-muted);min-width:0;}
+.pi-panel-search:focus-within {border-color:var(--pi-accent);}
+.pi-panel-search input {border:0;outline:none;background:transparent;color:var(--pi-ink);font-size:13px;min-width:0;width:100%;}
+.pi-file-scroll {flex:1;overflow:auto;min-height:0;padding:2px 8px 12px;overscroll-behavior:contain;}
+.pi-file-row {display:flex;align-items:center;gap:7px;width:100%;height:32px;border:0;border-radius:6px;padding-block:4px;padding-inline-end:8px;min-width:0;text-align:left;font-size:13px;color:var(--pi-ink);}
+.pi-file-row svg,.pi-file-spacer {flex:none;width:16px;color:var(--pi-muted);}
+.pi-file-row[aria-expanded] svg:last-of-type {color:var(--pi-accent);}
+.pi-file-row > span:last-child {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pi-file-row[data-hidden] {color:var(--pi-muted);}
+.pi-file-row[data-selected] {background:var(--pi-active);box-shadow:inset 2px 0 var(--pi-accent);color:var(--pi-accent);}
+.pi-file-status {display:flex;align-items:center;gap:8px;overflow-wrap:anywhere;padding:8px 12px;font-size:12px;color:var(--pi-muted);margin:0;}
+.pi-file-status button {padding:3px 7px;flex:none;}
+.pi-workbench-guide {height:100%;overflow:auto;padding:20px 16px;color:var(--pi-ink);}
+.pi-guide-heading {padding:6px 2px 18px;}
+.pi-guide-kicker {font-size:10px;font-weight:650;letter-spacing:.09em;color:var(--pi-accent);}
+.pi-guide-heading h2 {font-size:24px;line-height:1.25;margin:6px 0 8px;letter-spacing:-.02em;}
+.pi-guide-heading p {margin:0;line-height:1.6;}
+.pi-guide-entry {display:flex;align-items:center;gap:12px;text-align:left;width:100%;padding:10px 8px;min-height:58px;border:0;border-bottom:1px solid var(--pi-line);border-radius:5px;color:var(--pi-ink);}
+.pi-guide-entry > svg {flex:none;color:var(--pi-muted);}
+.pi-guide-entry > svg:first-child {color:var(--pi-accent);}
+.pi-guide-entry > span {display:grid;gap:3px;flex:1;min-width:0;}
+.pi-guide-entry strong {font-size:14px;font-weight:600;}
+.pi-guide-entry small {font-size:12px;color:var(--pi-muted);line-height:1.4;}
+.pi-tool-ledger {min-width:0;}
+.pi-tool-ledger .pi-panel-search {margin:10px 0;}
+.pi-tool-filters {display:flex;flex-wrap:wrap;gap:6px;}
+.pi-tool-filters button {font-size:12px;color:var(--pi-muted);border:1px solid var(--pi-line);padding:5px 8px;border-radius:6px;}
+.pi-tool-filters button[aria-pressed=true] {background:var(--pi-active);color:var(--pi-accent);border-color:var(--pi-accent);}
+.pi-tool-caption,.pi-tool-empty {font-size:12px;color:var(--pi-muted);margin:8px 0 12px;}
+.pi-tool-entry {border-bottom:1px solid var(--pi-line);}
+.pi-tool-row {display:flex;align-items:center;gap:9px;min-height:56px;width:100%;border:0;border-radius:6px;text-align:left;padding:8px 6px;}
+.pi-tool-row > svg {flex:none;color:var(--pi-muted);}
+.pi-tool-row[aria-expanded=true] > svg {transform:rotate(180deg);}
+.pi-tool-dot {width:8px;height:8px;flex:none;border-radius:50%;background:var(--pi-muted);}
+.pi-tool-entry[data-status=done] .pi-tool-dot {background:var(--pi-accent);}
+.pi-tool-entry[data-status=failed] .pi-tool-dot {background:#d35b55;}
+.pi-tool-entry[data-status=running] .pi-tool-dot {background:#c48b32;}
+.pi-tool-name {display:grid;min-width:0;flex:1;gap:3px;}
+.pi-tool-name strong {font:600 13px/1.4 var(--dsw-font-family);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pi-tool-name small,.pi-tool-duration {font-size:11px;color:var(--pi-muted);font-variant-numeric:tabular-nums;}
+.pi-tool-duration {flex:none;}
+.pi-tool-detail {padding:8px 10px 12px;}
+.pi-tool-detail h4 {font-size:12px;margin:6px 0;}
+.pi-tool-detail pre {font:12px/1.6 Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--pi-rail);border:1px solid var(--pi-line);border-radius:7px;padding:10px;max-height:300px;overflow:auto;}
+.pi-history-controls {display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px;padding:8px 0 14px;color:var(--pi-muted);font-size:12px;}
+.pi-more-button {min-height:32px;padding:6px 10px;border:1px solid var(--pi-line);border-radius:7px;background:var(--pi-surface);color:var(--pi-accent);font-size:12px;}
+.pi-tool-ledger > .pi-more-button {margin-top:12px;width:100%;}
+.pi-trace-shortcut {border:0;border-radius:6px;padding:3px 6px;font-size:12px;color:var(--pi-accent);background:var(--pi-active);white-space:nowrap;flex:none;}
+.pi-shell .wb-bar {padding:12px;gap:8px;border-bottom:1px solid var(--pi-line);}
+.pi-shell .wb-bar strong {font-size:14px;font-weight:600;}
+.pi-shell .git-patch {font:12px/1.6 Consolas,monospace;border:1px solid var(--pi-line);border-radius:8px;padding:10px;}
+.pi-tool-filters {border:0;margin:0;padding:0;min-width:0;}
+
+/* Shared code and workspace surface tokens, including body portals. */
+body {
+  --pi-code-font:"Cascadia Code","Cascadia Mono",Consolas,monospace;
+  --pi-code-keyword:#7042a1;
+  --pi-code-string:#246a46;
+  --pi-code-number:#99521b;
+  --pi-code-type:#1c6387;
+  --pi-code-error:#b33a37;
+}
+body[data-ds-dark-theme] {
+  --pi-code-keyword:#c6a4f2;
+  --pi-code-string:#a5d6a7;
+  --pi-code-number:#e9b579;
+  --pi-code-type:#8fc9e5;
+  --pi-code-error:#ff9691;
+}
+.pi-shell .axiom-message .pi-user-stack {max-width:min(680px,85%);}
+.pi-shell .pi-user-bubble {background:var(--pi-active);color:var(--pi-ink);border-radius:12px;line-height:1.65;}
+.pi-shell .axiom-sidebar-right-panel {
+  --dsw-alias-bg-base:var(--pi-base);
+  --dsw-alias-label-primary:var(--pi-ink);
+  --dsw-alias-label-secondary:var(--pi-muted);
+  --dsw-alias-border-l4:var(--pi-line);
+  --dsw-alias-interactive-bg-hover:var(--pi-active);
+}
+.pi-shell .pi-file-explorer,.pi-shell .axiom-trajectory-pane,.pi-shell .pi-workbench-guide {background:var(--pi-base);}
+.pi-shell .pi-panel-search input:focus-visible {outline:none;}
+.pi-panel-search:focus-within {outline:2px solid var(--pi-accent);outline-offset:2px;}
+.pi-tool-toolbar {position:sticky;top:-10px;z-index:1;padding:10px 0 2px;margin-top:-10px;background:var(--pi-base);border-bottom:1px solid var(--pi-line);}
+.pi-shell .pi-tool-detail pre,.pi-shell .git-patch,.pi-shell .axiom-chat-column .markdown pre {font-family:var(--pi-code-font);}
+.pi-shell .git-patch {background:var(--pi-rail);}
+.pi-shell .patch-add {color:var(--pi-code-string);}
+.pi-shell .patch-del {color:var(--pi-code-error);}
+.axiom-model-menu[data-menu-material] {background:var(--pi-surface);border:1px solid var(--pi-line);border-radius:10px;color:var(--pi-ink);}
+.axiom-model-menu .axiom-model-back,.axiom-model-menu .axiom-model-provider {color:var(--pi-muted);}
+.axiom-model-menu .axiom-model-option {min-height:36px;color:var(--pi-ink);border-radius:6px;}
+.axiom-model-menu .axiom-model-option[aria-checked=true],.axiom-model-menu .axiom-model-option:hover {background:var(--pi-active);color:var(--pi-accent);}
+.axiom-model-menu .axiom-model-search {background:var(--pi-rail);color:var(--pi-muted);border:1px solid var(--pi-line);}
+.axiom-model-menu .axiom-model-search input {color:var(--pi-ink);}
+.axiom-settings-dialog,.axiom-settings-view {background:var(--pi-base);color:var(--pi-ink);}
+.axiom-settings-dialog {border:1px solid var(--pi-line);border-radius:12px;}
+.axiom-settings-view>.settings-sections button {color:var(--pi-ink);border-radius:8px;}
+.axiom-settings-view>.settings-sections button[aria-pressed=true] {background:var(--pi-active);color:var(--pi-accent);font-weight:600;}
+.axiom-settings-view .wb-form :is(input,select,textarea) {border:1px solid var(--pi-line);background:var(--pi-surface);color:var(--pi-ink);border-radius:7px;}
+.axiom-settings-view .wb-form :is(input,select,textarea):focus-visible {outline:2px solid var(--pi-accent);outline-offset:2px;}
+.axiom-settings-view .wb-muted,.axiom-settings-view .wb-readonly {color:var(--pi-muted);}

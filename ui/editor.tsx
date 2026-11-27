@@ -3,7 +3,7 @@ import { javascript } from "@codemirror/lang-javascript";
 import { json as jsonLanguage } from "@codemirror/lang-json";
 import { markdown as markdownLanguage } from "@codemirror/lang-markdown";
 import { python } from "@codemirror/lang-python";
-import { defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { Compartment, EditorState } from "@codemirror/state";
 import {
   drawSelection,
@@ -12,6 +12,7 @@ import {
   keymap,
   lineNumbers,
 } from "@codemirror/view";
+import { tags } from "@lezer/highlight";
 import { RefreshCw, Save } from "lucide-react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../vendor/dsh/primitives/Button.tsx";
@@ -42,16 +43,38 @@ function language(path: string) {
   if (/\.md$/i.test(path)) return markdownLanguage();
   return [];
 }
+const codeHighlight = HighlightStyle.define([
+  {
+    tag: [tags.keyword, tags.controlKeyword, tags.operatorKeyword],
+    color: "var(--pi-code-keyword)",
+  },
+  { tag: [tags.string, tags.special(tags.string), tags.regexp], color: "var(--pi-code-string)" },
+  { tag: [tags.number, tags.bool, tags.null, tags.atom], color: "var(--pi-code-number)" },
+  { tag: [tags.typeName, tags.className, tags.namespace], color: "var(--pi-code-type)" },
+  { tag: [tags.comment, tags.meta], color: "var(--pi-muted)", fontStyle: "italic" },
+  {
+    tag: [tags.function(tags.variableName), tags.function(tags.propertyName)],
+    color: "var(--pi-accent)",
+  },
+  { tag: tags.invalid, color: "var(--pi-code-error)" },
+  { tag: tags.link, textDecoration: "underline" },
+  { tag: tags.strong, fontWeight: "bold" },
+  { tag: tags.emphasis, fontStyle: "italic" },
+]);
 const appearance = new Compartment();
 const editorTheme = () =>
   EditorView.theme(
     {
       "&": { height: "100%", background: "var(--bg)", color: "var(--ink)" },
-      ".cm-scroller": { overflow: "auto", fontFamily: "var(--ds-font-family-code)" },
-      ".cm-gutters": { background: "var(--panel)", color: "var(--muted)", border: "none" },
+      ".cm-scroller": { overflow: "auto", fontFamily: "var(--pi-code-font)", lineHeight: "1.65" },
+      ".cm-gutters": {
+        background: "var(--panel)",
+        color: "var(--muted)",
+        borderRight: "1px solid var(--pi-line)",
+      },
       ".cm-activeLine, .cm-activeLineGutter": { background: "var(--hover)" },
       ".cm-cursor": { borderLeftColor: "var(--ink)" },
-      ".cm-selectionBackground": { background: "var(--dsw-specific-bubble-highlight)!important" },
+      ".cm-selectionBackground": { background: "var(--pi-active)!important" },
     },
     { dark: document.body.hasAttribute("data-ds-dark-theme") },
   );
@@ -103,7 +126,7 @@ export default function Editor({ path }: { path: string }) {
           history(),
           keymap.of([...defaultKeymap, ...historyKeymap]),
           language(path),
-          syntaxHighlighting(defaultHighlightStyle),
+          syntaxHighlighting(codeHighlight),
           appearance.of(editorTheme()),
           EditorView.updateListener.of((u) => {
             if (u.docChanged) {

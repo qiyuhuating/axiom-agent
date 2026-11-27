@@ -16,6 +16,7 @@ import {
 import MarkdownIt from "markdown-it";
 import {
   type ComponentProps,
+  type MouseEvent,
   memo,
   useCallback,
   useEffect,
@@ -157,72 +158,150 @@ const starterTasks = [
     icon: FileText,
   },
 ];
-const TranscriptMessages = memo(function TranscriptMessages({
-  messages,
-  sessionId,
+const HISTORY_PAGE = 80;
+const HistoryMessage = memo(function HistoryMessage({
+  message,
+  index,
   locked,
   onQuote,
 }: {
-  messages: Message[];
-  sessionId?: string;
+  message: Message;
+  index: number;
   locked: boolean;
   onQuote: (text: string) => void;
 }) {
-  return messages.map((message, index) => {
-    const text = textOf(message.content) || message.errorMessage || "";
-    if (!text || (message.role !== "user" && message.role !== "assistant")) return null;
-    const user = message.role === "user";
-    const copy = <CopyMessage text={text} />;
-    return (
-      <article
-        key={(sessionId ?? "") + ":" + index}
-        className={"axiom-message " + message.role}
-        data-chat-flow-kind={user ? "user" : "assistant"}
-        data-actions-reveal="hover"
-      >
-        {user ? (
-          <div className={messageCss.userRow}>
-            <div className={messageCss.userStack}>
-              <UserMessageBubble>
-                <UserText text={text} />
-              </UserMessageBubble>
-              <div className={actionsCss.actions}>{copy}</div>
-            </div>
+  const text = textOf(message.content) || message.errorMessage || "";
+  if (!text || (message.role !== "user" && message.role !== "assistant")) return null;
+  const user = message.role === "user";
+  const copy = <CopyMessage text={text} />;
+  return (
+    <article
+      data-history-index={index}
+      className={"axiom-message " + message.role}
+      data-chat-flow-kind={user ? "user" : "assistant"}
+      data-actions-reveal="hover"
+    >
+      {user ? (
+        <div className={messageCss.userRow}>
+          <div className={messageCss.userStack + " pi-user-stack"}>
+            <UserMessageBubble className="pi-user-bubble">
+              <UserText text={text} />
+            </UserMessageBubble>
+            <div className={actionsCss.actions}>{copy}</div>
           </div>
-        ) : (
-          <div className={assistantCss.root}>
-            <div className={assistantCss.body}>
-              <MarkdownMessage text={text} />
-            </div>
-            <div className={actionsCss.actions + " " + assistantCss.actions}>
-              {copy}
-              <button
-                type="button"
-                className={"quote-message " + actionsCss.action}
-                title="引用此回复"
-                aria-label="引用"
-                disabled={locked}
-                onClick={(event) => {
-                  const selection = window.getSelection();
-                  const article = event.currentTarget.closest("article");
-                  const selected = selection?.toString().trim();
-                  const within =
-                    selection?.anchorNode &&
-                    selection.focusNode &&
-                    article?.contains(selection.anchorNode) &&
-                    article.contains(selection.focusNode);
-                  onQuote(within && selected ? selected : text);
-                  selection?.removeAllRanges();
-                }}
-              >
-                <MessageSquareQuote aria-hidden="true" size={15} />
-              </button>
-            </div>
+        </div>
+      ) : (
+        <div className={assistantCss.root}>
+          <div className={assistantCss.body}>
+            <MarkdownMessage text={text} />
           </div>
-        )}
-      </article>
-    );
+          <div className={actionsCss.actions + " " + assistantCss.actions}>
+            {copy}
+            <button
+              type="button"
+              className={"quote-message " + actionsCss.action}
+              title="引用此回复"
+              aria-label="引用"
+              disabled={locked}
+              onClick={(event) => {
+                const selection = window.getSelection();
+                const article = event.currentTarget.closest("article");
+                const selected = selection?.toString().trim();
+                const within =
+                  selection?.anchorNode &&
+                  selection.focusNode &&
+                  article?.contains(selection.anchorNode) &&
+                  article.contains(selection.focusNode);
+                onQuote(within && selected ? selected : text);
+                selection?.removeAllRanges();
+              }}
+            >
+              <MessageSquareQuote aria-hidden="true" size={15} />
+            </button>
+          </div>
+        </div>
+      )}
+    </article>
+  );
+});
+const TranscriptMessages = memo(function TranscriptMessages({
+  messages,
+  locked,
+  onQuote,
+  reading,
+  onBrowse,
+}: {
+  messages: Message[];
+  locked: boolean;
+  onQuote: (text: string) => void;
+  reading: boolean;
+  onBrowse: () => void;
+}) {
+  // Follow the latest page while at the bottom, but freeze the visible
+  // prefix when the reader scrolls back or explicitly reveals earlier data.
+  const recentStart = Math.max(0, messages.length - HISTORY_PAGE);
+  const [start, setStart] = useState<number | null>(null);
+  const first = start === null ? recentStart : Math.min(start, recentStart);
+  useLayoutEffect(() => {
+    if (reading && start === null) setStart(recentStart);
+    else if (start !== null && start > recentStart) setStart(recentStart);
+    else if (!reading && start === recentStart) setStart(null);
+  }, [reading, start, recentStart]);
+  const anchor = useRef<{ row: Element; top: number; scroll: HTMLElement } | null>(null);
+  useLayoutEffect(() => {
+    const saved = anchor.current;
+    anchor.current = null;
+    if (saved?.row.isConnected)
+      saved.scroll.scrollTop += saved.row.getBoundingClientRect().top - saved.top;
   });
+  const changePage = (event: MouseEvent<HTMLButtonElement>, next: number) => {
+    const scroll = event.currentTarget.closest<HTMLElement>("#transcript");
+    const row = Array.from(scroll?.querySelectorAll("[data-history-index]") ?? []).find(
+      (row) => Number(row.getAttribute("data-history-index")) >= Math.max(first, next),
+    );
+    if (scroll && row) anchor.current = { row, top: row.getBoundingClientRect().top, scroll };
+    onBrowse();
+    setStart(next);
+  };
+
+  return (
+    <>
+      {recentStart > 0 && (
+        <div className="pi-history-controls">
+          <span>
+            显示最近 {messages.length - first} / {messages.length} 条消息
+          </span>
+          {first > 0 && (
+            <button
+              type="button"
+              className="pi-more-button"
+              onClick={(event) => changePage(event, Math.max(0, first - HISTORY_PAGE))}
+            >
+              加载更早消息（剩余 {first} 条）
+            </button>
+          )}
+          {first < recentStart && (
+            <button
+              type="button"
+              className="pi-more-button"
+              onClick={(event) => changePage(event, recentStart)}
+            >
+              仅显示最近消息
+            </button>
+          )}
+        </div>
+      )}
+      {messages.slice(first).map((message, offset) => (
+        <HistoryMessage
+          key={first + offset}
+          message={message}
+          index={first + offset}
+          locked={locked}
+          onQuote={onQuote}
+        />
+      ))}
+    </>
+  );
 });
 function App() {
   const p = useShellProjection(),
@@ -246,6 +325,10 @@ function App() {
     [],
   );
   const [showJump, setShowJump] = useState(false);
+  const browseHistory = useCallback(() => {
+    followingTranscript.current = false;
+    setShowJump(true);
+  }, []);
   const sessionId = p.state?.sessionId;
   const [quote, setQuote] = useState<{ text: string; id: number; sessionId?: string } | null>(null);
   const clearQuote = useCallback(() => setQuote(null), []);
@@ -545,9 +628,11 @@ function App() {
               <div className="axiom-chat-column">
                 <TranscriptMessages
                   messages={p.messages}
-                  sessionId={p.state?.sessionId}
+                  key={sessionId}
                   locked={locked}
                   onQuote={selectQuote}
+                  reading={showJump}
+                  onBrowse={browseHistory}
                 />
                 <MemoObservedChanges tools={p.tools} />
                 <MemoDeliverableCards tools={p.tools} />
@@ -595,9 +680,13 @@ function App() {
                   {workspaceName}
                 </span>
                 {p.tools.length > 0 && (
-                  <span>
-                    {p.tools.filter((tool) => tool.finished).length}/{p.tools.length} 工具已完成
-                  </span>
+                  <button
+                    type="button"
+                    className="pi-trace-shortcut"
+                    onClick={() => openPanel("trajectory")}
+                  >
+                    {p.tools.filter((tool) => tool.finished).length}/{p.tools.length} 工具已结束
+                  </button>
                 )}
                 {p.tools.some((tool) => !tool.finished) && (
                   <span className="pi-active-tool">
@@ -685,7 +774,7 @@ function App() {
                         levels={p.levels}
                         current={p.state?.model}
                         effort={p.state?.thinkingLevel}
-                        sessionId={p.state?.sessionId}
+                        key={sessionId}
                         disabled={locked}
                         onModel={(model) =>
                           run(async () => {
