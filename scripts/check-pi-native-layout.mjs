@@ -71,6 +71,8 @@ try {
     if (verifyStream && process.env.AXIOM_TEST_SCREENSHOTS) {
       await page.screenshot({ path: join(process.env.AXIOM_TEST_SCREENSHOTS, "axiom-dark.jpg"), quality: 85, animations: "disabled" });
     }
+    assert.equal(await page.locator("body").evaluate(el=>el.classList.contains("workbench-open")),false);
+    assert.equal(await page.locator("#show-workbench").isVisible(),true);
     const geometry = await page.evaluate(() => {
       const rect = (selector) => document.querySelector(selector).getBoundingClientRect().toJSON();
       const form = document.querySelector("#form");
@@ -475,6 +477,49 @@ try {
       await dialog.waitFor({state:"detached"});
       assert.equal(await trigger.evaluate(el=>document.activeElement===el),true);
       console.log("PI_MODAL_FOCUS_PASS");
+
+      // Each session retains its tabs, but never opens the workbench automatically.
+      const base = await page.evaluate(()=>fetch("/api/snapshot").then(r=>r.json()));
+      const identities = [{id:"rightbar-fixture-a",name:"Rightbar fixture A"},{id:"rightbar-fixture-b",name:"Rightbar fixture B"}];
+      let active = identities[0].id;
+      const sessionState = ()=>({...base.state,sessionId:active});
+      await page.route("**/api/snapshot*",route=>route.fulfill({json:{
+        ...base,state:sessionState(),sessions:identities,messages:[],history:null,historyTools:null,dialogs:[],
+      }}));
+      await page.route("**/api/state",route=>route.fulfill({json:sessionState()}));
+      await page.route("**/api/action",route=>{
+        const req=route.request().postDataJSON();
+        if(req.action==="new"||req.action==="switch"){
+          active=req.action==="new"?identities[1].id:req.value;
+          return route.fulfill({json:{}});
+        }
+        return route.continue();
+      });
+      const closed=()=>page.waitForFunction(()=>!document.body.classList.contains("workbench-open")&&!!document.querySelector("#show-workbench"));
+      const sessionButton=id=>page.locator("#sessions .session-row").filter({hasText:identities.find(item=>item.id===id).name}).locator(".session-select");
+      await page.reload();
+      await page.waitForFunction(()=>document.querySelector("#status")?.textContent==="就绪");
+      await closed();
+      await page.locator("#sidebar-panels").getByRole("button",{name:"文件",exact:true}).click();
+      await page.locator(".inspector .pi-file-explorer").waitFor();
+      await page.locator("#new").click();
+      await closed();
+      await page.locator("#sidebar-panels").getByRole("button",{name:"Git Diff",exact:true}).click();
+      await page.locator(".inspector [data-dockkit-tab]").filter({hasText:"Git Diff"}).first().waitFor();
+      await sessionButton(identities[0].id).click();
+      await closed();
+      await page.locator("#show-workbench").click();
+      await page.locator(".inspector .pi-file-explorer").waitFor();
+      assert.equal(await page.locator(".inspector [data-dockkit-tab]").filter({hasText:"Git Diff"}).count(),0);
+      await sessionButton(identities[1].id).click();
+      await closed();
+      await page.locator("#show-workbench").click();
+      await page.locator(".inspector [data-dockkit-tab]").filter({hasText:"Git Diff"}).first().waitFor();
+      assert.equal(await page.locator(".inspector [data-dockkit-tab]").filter({hasText:"文件"}).count(),0);
+      await page.reload();
+      await page.waitForFunction(()=>document.querySelector("#status")?.textContent==="就绪");
+      await closed();
+      console.log("AXIOM_RIGHTBAR_DEFAULT_PASS",{startupClosed:true,newClosed:true,switchClosed:true,tabsPreserved:true,reloadClosed:true});
     }
     assert.deepEqual(errors, []);
     console.log("PI_LAYOUT_PASS", JSON.stringify({width,height,deviceScaleFactor,pixelWidth,pixelHeight,font:geometry.font}));

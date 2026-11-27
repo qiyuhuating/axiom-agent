@@ -1,6 +1,7 @@
 import React, {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -1388,11 +1389,10 @@ export function Workbench() {
       }),
     [controller],
   );
-  useEffect(() => {
-    const surface = controller.getSnapshot().state;
-    layoutActions.setFullscreen(surface.mode === "fullscreen");
-    if (surface.expanded) layoutActions.showWorkbench();
-    else layoutActions.hideWorkbench();
+  useLayoutEffect(() => {
+    controller.setExpanded(false);
+    layoutActions.setFullscreen(controller.getSnapshot().state.mode === "fullscreen");
+    layoutActions.hideWorkbench();
   }, [controller]);
   function toggleFullscreen() {
     const next = !layout.fullscreen;
