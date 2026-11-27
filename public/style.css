@@ -904,3 +904,36 @@ body[data-ds-dark-theme] {
 .axiom-settings-view .wb-form :is(input,select,textarea) {border:1px solid var(--pi-line);background:var(--pi-surface);color:var(--pi-ink);border-radius:7px;}
 .axiom-settings-view .wb-form :is(input,select,textarea):focus-visible {outline:2px solid var(--pi-accent);outline-offset:2px;}
 .axiom-settings-view .wb-muted,.axiom-settings-view .wb-readonly {color:var(--pi-muted);}
+
+/* Owned Pi controls. Modal keyboard ownership is still shared with DockKit menus. */
+.pi-button {display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:none;min-width:0;height:36px;padding:0 12px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--pi-ink);font:inherit;font-size:13px;line-height:1.3;cursor:pointer;}
+.pi-button[data-size=sm] {height:28px;padding:0 9px;font-size:12px;border-radius:6px;}
+.pi-button[data-variant=primary] {background:var(--pi-accent);color:var(--pi-on-accent,#fff);}
+.pi-button[data-variant=outline] {border-color:var(--pi-line);}
+.pi-button[data-variant=toolbar] {background:var(--pi-surface);border-color:var(--pi-line);}
+.pi-button:disabled {cursor:not-allowed;opacity:.42;}
+.pi-button:not(:disabled):not([data-variant=primary]):hover {background:var(--pi-active);}
+.pi-button[data-variant=primary]:not(:disabled):hover {filter:brightness(.92);}
+.pi-button-icon {display:inline-grid;place-items:center;flex:none;width:16px;height:16px;}
+.pi-state-dot {display:inline-grid;place-items:center;flex:none;vertical-align:middle;border-radius:50%;background:var(--pi-muted);color:var(--pi-surface);}
+.pi-state-dot[data-state=done] {background:var(--pi-accent);}
+.pi-state-dot[data-state=warning] {background:#c48b32;}
+.pi-state-dot[data-state=error] {background:var(--pi-code-error);}
+.pi-state-dot[data-state=ongoing] {background:transparent;border:2px solid var(--pi-line);border-top-color:var(--pi-accent);animation:pi-spin .9s linear infinite;}
+.pi-state-dot[data-appearance=step][data-state=idle] {background:transparent;border:1px solid var(--pi-muted);}
+@keyframes pi-spin {to {transform:rotate(360deg);}}
+@media (prefers-reduced-motion:reduce) {.pi-state-dot[data-state=ongoing] {animation:none;}}
+.pi-user-surface {max-width:100%;background:var(--pi-active);border-radius:12px;padding:10px 16px;color:var(--pi-ink);font-size:var(--dsh-content-font-size,16px);line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere;}
+.pi-modal-layer {position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:24px;pointer-events:auto;}
+.pi-modal-mask {position:absolute;inset:0;background:rgba(16,24,28,.42);}
+.pi-modal-mask[data-blur=true] {backdrop-filter:blur(3px);}
+.pi-modal-card {position:relative;z-index:1;display:flex;flex-direction:column;gap:18px;width:min(420px,100%);max-height:100%;min-width:0;padding:0 0 20px;overflow:hidden;background:var(--pi-base);color:var(--pi-ink);border:1px solid var(--pi-line);border-radius:12px;box-shadow:0 18px 56px rgba(16,24,28,.22);}
+.pi-modal-card:focus {outline:none;}
+.pi-modal-content {display:flex;flex-direction:column;min-width:0;min-height:0;overflow:auto;}
+.pi-modal-header {display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px 10px;}
+.pi-modal-header h2 {display:flex;align-items:center;gap:8px;margin:0;font-size:16px;font-weight:600;color:var(--pi-ink);}
+.pi-modal-header h2 svg {color:#c48b32;flex:none;}
+.pi-modal-description {margin:0;padding:0 20px;color:var(--pi-muted);font-size:13px;line-height:1.6;}
+.pi-modal-body {display:flex;flex-direction:column;min-width:0;padding:8px 20px 0;}
+.pi-modal-footer {display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:0 20px;}
+.pi-modal-mask {border:0;padding:0;width:100%;height:100%;border-radius:0;}

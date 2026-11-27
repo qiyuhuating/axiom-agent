@@ -1,7 +1,7 @@
 /** Adapted from upstream SidebarRight/ExpandButton: the conversation header corner seat. */
 import { PanelLeft } from "lucide-react";
-import { Button } from "../vendor/dsh/primitives/Button.tsx";
 import css from "../vendor/dsh/sidebar-right/ExpandButton.module.css";
+import { Button } from "./pi-primitives.tsx";
 
 export function RightbarExpand({
   expanded,

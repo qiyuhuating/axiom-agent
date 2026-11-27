@@ -9,6 +9,7 @@ import { once } from "node:events";
 import { createInterface } from "node:readline";
 import { build } from "esbuild";
 import { historyPage, historyTools } from "../src/history-page.mjs";
+import { toolTextPage } from "../src/tool-history-page.mjs";
 
 const modulePath = process.env.AXIOM_TEST_PLAYWRIGHT_MODULE;
 assert.ok(modulePath, "Set AXIOM_TEST_PLAYWRIGHT_MODULE to an installed Playwright module");
@@ -254,7 +255,7 @@ try {
       const toolResults = Array.from({ length: 500 }, (_, i) => ({
         role: "toolResult", toolCallId: "trace-" + i,
         toolName: i % 2 ? "read" : "write", isError: i % 10 === 0,
-        content: [{ type: "text", text: "Tool fixture result " + i }]
+        content: [{ type: "text", text: "Tool fixture result " + i + (i === 490 ? "x".repeat(50000) : "") }]
       }));
       await page.route("**/api/snapshot*", async route => {
         const response = await route.fetch();
@@ -304,12 +305,23 @@ try {
         detailRequests++;
         const id = new URL(route.request().url()).searchParams.get("id");
         const detail=historyTools(toolResults,{only:id}).tools[0];
-        await route.fulfill({ json:{args:detail.args,result:detail.result} });
+                const params=new URL(route.request().url()).searchParams;
+        const field=params.get("field");
+        const value=field ? toolTextPage(detail[field],Number(params.get("offset")),params.get("revision")) : {args:toolTextPage(detail.args),result:toolTextPage(detail.result)};
+        await route.fulfill({ json:value });
       });
       assert.equal(detailRequests,0);
       await ledger.locator(".pi-tool-row").first().click();
       await ledger.getByText(/Tool fixture result 490/).waitFor();
       assert.equal(detailRequests,1);
+      const payload=ledger.locator(".pi-tool-detail pre").last();
+      assert.ok((await payload.innerText()).length<=16384);
+      await ledger.getByRole("button",{name:"下一段",exact:true}).click();
+      await page.waitForFunction(()=>!document.querySelector(".pi-tool-detail pre:last-of-type")?.textContent?.includes("Tool fixture result 490"));
+      assert.ok((await payload.innerText()).length<=16384);
+      await ledger.getByRole("button",{name:"上一段",exact:true}).click();
+      await ledger.getByText(/Tool fixture result 490/).waitFor();
+      assert.equal(detailRequests,3);
       assert.match(await ledger.locator(".pi-tool-detail").innerText(), /Tool fixture result 490/);
       await ledger.getByRole("searchbox", { name: "筛选工具名称" }).fill("read");
       assert.equal(await ledger.locator('[data-kind="tool"]').count(), 0);
@@ -365,6 +377,16 @@ try {
       await page.unroute("**/api/models");
       await page.unroute("**/api/action");
       console.log("PI_MODEL_KEYBOARD_PASS", JSON.stringify({ modelActions, focusMoved: true }));
+      const trigger=page.getByRole("button",{name:"Pi 会话"});
+      await trigger.click();
+      const dialog=page.getByRole("dialog",{name:"Pi 会话"});
+      await dialog.waitFor();
+      await page.keyboard.press("Tab");
+      assert.equal(await dialog.evaluate(el=>el.contains(document.activeElement)),true);
+      await page.keyboard.press("Escape");
+      await dialog.waitFor({state:"detached"});
+      assert.equal(await trigger.evaluate(el=>document.activeElement===el),true);
+      console.log("PI_MODAL_FOCUS_PASS");
     }
     assert.deepEqual(errors, []);
     console.log("PI_LAYOUT_PASS", JSON.stringify({width,height,deviceScaleFactor,pixelWidth,pixelHeight,font:geometry.font}));

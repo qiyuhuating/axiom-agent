@@ -33,9 +33,6 @@ import heroCss from "../vendor/dsh/conversation/HeroShell.module.css";
 import inputCss from "../vendor/dsh/conversation/InputBar.module.css";
 import frameCss from "../vendor/dsh/layout/AppFrame.module.css";
 import { writeClipboard } from "../vendor/dsh/primitives/clipboard.ts";
-
-import { StateDot } from "../vendor/dsh/primitives/StateDot.tsx";
-import { UserMessageBubble } from "../vendor/dsh/primitives/UserMessageBubble.tsx";
 import settingsCss from "../vendor/dsh/sidebar/SettingsRoot.module.css";
 import sidebarCss from "../vendor/dsh/sidebar/SidebarRoot.module.css";
 import { DraftEditor } from "./draft-editor.tsx";
@@ -46,8 +43,8 @@ import {
   ObservedChanges,
   PlanDock,
 } from "./harness-features.tsx";
-
 import { PiModelSelect } from "./model-select.tsx";
+import { StateDot, UserMessageBubble } from "./pi-primitives.tsx";
 import {
   action,
   addFiles,

@@ -11,6 +11,43 @@ const auth = { Authorization: "Bearer " + runtimeToken };
 const owner = randomUUID();
 let launchedByHost = false;
 let closing = false;
+let lease;
+async function acquireLease(health) {
+  if (health.leaseProtocol !== 1 || closing || lease?.pid === health.pid) return;
+  lease?.abort.abort();
+  const abort = new AbortController();
+  const current = { pid: health.pid, abort };
+  lease = current;
+  const timeout = setTimeout(() => abort.abort(), 3000);
+  try {
+    const response = await fetch(runtimeUrl + "/api/runtime-lease", {
+      headers: auth,
+      signal: abort.signal,
+      redirect: "error",
+    });
+    if (!response.ok || !response.body) {
+      await response.body?.cancel();
+      throw Error("Runtime lease unavailable");
+    }
+    const reader = response.body.getReader();
+    void (async () => {
+      try {
+        while (!(await reader.read()).done) {}
+      } catch (error) {
+        if (!abort.signal.aborted) console.error("Runtime lease:", error.message);
+      } finally {
+        reader.releaseLock();
+        if (lease === current) lease = undefined;
+      }
+    })();
+  } catch (error) {
+    abort.abort();
+    if (lease === current) lease = undefined;
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 async function probe() {
   let response;
   try {
@@ -64,12 +101,16 @@ async function connect() {
   const deadline = Date.now() + 12000;
   do {
     const result = await probe();
-    if (typeof result === "object") return result;
+    if (typeof result === "object") {
+      await acquireLease(result);
+      return result;
+    }
     if (result === "absent" && !launched) {
       if (closing) throw new HttpError(503, "Workbench is closing");
       startDetachedRuntime(root, resolve(config.sessionDir, "runtime.log"), {
         ...process.env,
-        AXIOM_RUNTIME_OWNER: owner,
+        AXIOM_RUNTIME_OWNER:
+          process.env.AXIOM_DESKTOP === "1" && config.keepRuntimeOnExit !== true ? owner : "",
       });
       launchedByHost = true;
       launched = true;
@@ -81,7 +122,9 @@ async function connect() {
 let starting;
 export async function stopIdleOwnedRuntime() {
   closing = true;
-  if (config.keepRuntimeOnExit === true) return;
+  lease?.abort.abort();
+  lease = undefined;
+  if (process.env.AXIOM_DESKTOP !== "1" || config.keepRuntimeOnExit === true) return;
   if (starting && launchedByHost) await starting;
   if (!launchedByHost) return;
   if ((await probe()) === "absent") return;

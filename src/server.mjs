@@ -17,6 +17,7 @@ import {
   resourceAction,
   setPermission,
 } from "./settings.mjs";
+import { toolTextPage } from "./tool-history-page.mjs";
 import { gitDiff, listFiles, openFile, saveFile, upload } from "./workspace.mjs";
 
 const gatewayPort = process.env.AXIOM_GATEWAY_PORT;
@@ -85,7 +86,18 @@ const server = createServer(async (req, res) => {
           id = url.searchParams.get("id");
         if (!session || !id || session.length > 256 || id.length > 512)
           throw new HttpError(400, "Tool history identity required");
-        return json(res, await agent.toolHistory(session, id));
+        const tool = await agent.toolHistory(session, id);
+        if (url.searchParams.get("view") !== "page") return json(res, tool);
+        const field = url.searchParams.get("field");
+        if (field === null)
+          return json(res, { args: toolTextPage(tool.args), result: toolTextPage(tool.result) });
+        if (field !== "args" && field !== "result")
+          throw new HttpError(400, "Invalid tool history field");
+        const offset = Number(url.searchParams.get("offset") ?? 0);
+        const revision = url.searchParams.get("revision") ?? undefined;
+        if (!revision || !/^[a-f0-9]{64}$/.test(revision))
+          throw new HttpError(400, "Tool text revision required");
+        return json(res, toolTextPage(tool[field], offset, revision));
       }
       if (path === "/api/history") {
         const before = url.searchParams.get("before");
@@ -253,8 +265,7 @@ async function shutdown() {
   try {
     await agent.close();
   } finally {
-    if (process.env.AXIOM_DESKTOP === "1")
-      await stopIdleOwnedRuntime().catch((error) => console.error("Runtime exit:", error.message));
+    await stopIdleOwnedRuntime().catch((error) => console.error("Runtime exit:", error.message));
   }
 }
 process.on("SIGINT", shutdown);

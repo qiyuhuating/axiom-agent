@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 import { validateAnswer } from "../src/interaction-protocol.mjs";
 import css from "../vendor/dsh/capabilities/QuestionComposer.module.css";
-import { Button } from "../vendor/dsh/primitives/Button.tsx";
-import { Modal } from "../vendor/dsh/primitives/Modal.tsx";
 import { api, msg } from "./panel-shared.tsx";
+import { Button, Modal } from "./pi-primitives.tsx";
 import type { Dialog } from "./projection.ts";
 import { removeDialog } from "./projection.ts";
 

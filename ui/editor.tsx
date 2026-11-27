@@ -15,10 +15,10 @@ import {
 import { tags } from "@lezer/highlight";
 import { RefreshCw, Save } from "lucide-react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Button } from "../vendor/dsh/primitives/Button.tsx";
 import { DiffBlock } from "../vendor/dsh/primitives/DiffBlock.tsx";
 import MarkdownIt from "./markdown.ts";
 import { api, dirtyTabs, errorBox, Header, msg } from "./panel-shared.tsx";
+import { Button } from "./pi-primitives.tsx";
 
 const diffLabels = {
   codeLabel: "Diff",

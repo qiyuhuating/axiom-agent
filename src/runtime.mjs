@@ -9,6 +9,29 @@ delete process.env.AXIOM_RUNTIME_OWNER;
 let jobs, term, ctx;
 let draining = false;
 let mutations = 0;
+const leases = new Set();
+const idleGraceUntil = performance.now() + 15000;
+let hadLease = false;
+async function stopIfIdle() {
+  if (draining || !owner || !ctx || leases.size || mutations || jobs.hasActiveWork()) return false;
+  draining = true;
+  try {
+    const terminals = await ctx.axiomTerminal.listAsync();
+    if (
+      leases.size ||
+      mutations ||
+      jobs.hasActiveWork() ||
+      terminals.some((t) => t.exit == null && !t.interrupted)
+    ) {
+      draining = false;
+      return false;
+    }
+    return true;
+  } catch (error) {
+    draining = false;
+    throw error;
+  }
+}
 const server = createServer(async (req, res) => {
   const auth = req.headers.authorization;
   const token = auth?.startsWith("Bearer ") ? auth.slice(7) : undefined;
@@ -31,10 +54,27 @@ const server = createServer(async (req, res) => {
           ...healthStats(),
           pid: process.pid,
           protocol: 1,
+          leaseProtocol: 1,
           workspace: config.workspace,
           sessionDir: config.sessionDir,
           terminalBackend: config.terminalBackend,
         });
+      if (path === "/api/runtime-lease") {
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        });
+        leases.add(res);
+        hadLease = true;
+        res.on("close", () => {
+          leases.delete(res);
+        });
+        res.write(": lease\n\n");
+        const heartbeat = setInterval(() => res.write(": heartbeat\n\n"), 5000);
+        res.once("close", () => clearInterval(heartbeat));
+        return;
+      }
       if (path === "/api/jobs") {
         const params = url.searchParams;
         if (!params.has("view")) return json(res, ctx.axiomJobs.state());
@@ -86,22 +126,11 @@ const server = createServer(async (req, res) => {
     if (req.method === "POST") {
       const payload = await body(req);
       if (path === "/api/runtime-stop-idle") {
-        if (draining || !owner || payload.owner !== owner || mutations || jobs.hasActiveWork())
+        if (!owner || payload.owner !== owner || !(await stopIfIdle()))
           return json(res, { stopping: false });
-        draining = true;
-        try {
-          const terminals = await ctx.axiomTerminal.listAsync();
-          if (jobs.hasActiveWork() || terminals.some((t) => t.exit == null && !t.interrupted)) {
-            draining = false;
-            return json(res, { stopping: false });
-          }
-          json(res, { stopping: true });
-          void shutdown();
-          return;
-        } catch (error) {
-          draining = false;
-          throw error;
-        }
+        json(res, { stopping: true });
+        void shutdown();
+        return;
       }
       const { action, value } = payload;
       if (path === "/api/job-action") return json(res, await ctx.axiomJobs.action(action, value));
@@ -142,10 +171,21 @@ server.listen(runtimePort, "127.0.0.1", async () => {
     process.exit(1);
   }
 });
+const idleWatch = setInterval(() => {
+  if (!owner || (!hadLease && performance.now() < idleGraceUntil)) return;
+  void stopIfIdle()
+    .then((idle) => {
+      if (idle) void shutdown();
+    })
+    .catch((error) => console.error("Runtime idle check:", error.message));
+}, 1000);
+idleWatch.unref();
 let stopping = false;
 async function shutdown() {
   if (stopping) return;
   stopping = true;
+  draining = true;
+  clearInterval(idleWatch);
   try {
     await term?.closeTerminals();
   } catch (error) {

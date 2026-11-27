@@ -12,6 +12,7 @@ import { useModalLayer } from "../vendor/dsh/primitives/useModalLayer.ts";
 import { FileExplorer } from "./file-explorer.tsx";
 import { JobDetails, TeamOverview, TraceLedger } from "./harness-features.tsx";
 import { api, dirtyTabs, errorBox, Header, msg } from "./panel-shared.tsx";
+import { Button, Modal } from "./pi-primitives.tsx";
 import {
   appendDraft,
   type Dialog,
@@ -55,8 +56,6 @@ import {
 } from "lucide-react";
 import { parseBrowserAddress } from "../vendor/dsh/browser/url.ts";
 import { DockController, DockLayout } from "../vendor/dsh/dockkit/index.ts";
-import { Button } from "../vendor/dsh/primitives/Button.tsx";
-import { Modal } from "../vendor/dsh/primitives/Modal.tsx";
 import "@xterm/xterm/css/xterm.css";
 import "../vendor/dsh/primitives/DiffBlock.module.css";
 import "../vendor/dsh/primitives/CodeCard.module.css";

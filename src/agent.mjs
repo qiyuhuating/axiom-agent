@@ -2,12 +2,14 @@ import { unlink } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { config, root } from "./config.mjs";
-import { projectHarness, projectSessionHistory } from "./harness-state.mjs";
+import { projectSessionHistoryEntries } from "./harness-state.mjs";
 import { historyPage, historyTools } from "./history-page.mjs";
 import { HttpError } from "./http.mjs";
 import { decodeRequest, validateAnswer } from "./interaction-protocol.mjs";
 import { PiClient } from "./pi-client.mjs";
 import { builtinPromptPath } from "./prompt-store.mjs";
+import { SessionCatalog } from "./session-catalog.mjs";
+import { SessionEntryIndex } from "./session-entry-index.mjs";
 
 export class Agent {
   #client;
@@ -24,6 +26,8 @@ export class Agent {
   }
   #changing = false;
   #sessionRevision = 0;
+  #history = new SessionEntryIndex();
+  #catalog = new SessionCatalog(config.sessionDir);
   #dialogs = new Map();
   get busy() {
     return this.#busy;
@@ -115,6 +119,7 @@ export class Agent {
   #retire(client, error) {
     if (this.#client !== client) return;
     this.#client = undefined;
+    this.#history = new SessionEntryIndex();
     this.#startup = undefined;
     this.#busy = false;
     this.#retrying = false;
@@ -157,12 +162,12 @@ export class Agent {
     const client = this.#client;
     const revision = this.#sessionRevision;
     if (revision % 2) throw Error("Session change in progress");
-    const [state, messages, tree, sessions] = await Promise.all([
-      client.getState(),
-      client.getMessages(),
-      client.getTree(),
+    const state = await client.getState();
+    const [history, sessions] = await Promise.all([
+      this.#readHistory(client, state.sessionId, !page),
       this.sessions(),
     ]);
+    const { messages, harness } = history;
     if (client !== this.#client || revision !== this.#sessionRevision)
       throw Error("Session changed while reading its snapshot");
     this.#sessionId = state.sessionId;
@@ -176,15 +181,22 @@ export class Agent {
         : { messages: messages.filter((m) => m.role !== "system") }),
       sessions,
       dialogs: this.pendingDialogs(),
-      harness: { sessionId: state.sessionId, ...projectHarness(tree) },
+      harness: { sessionId: state.sessionId, ...harness },
     };
+  }
+  async #readHistory(client, sessionId, live = false) {
+    // Flat native entries avoid deeply nested JSON serialization even for live runs.
+    const history = await this.#history.read(client, sessionId);
+    if (live || this.#busy) return { ...history, messages: await client.getMessages() };
+    return history;
   }
   async toolHistory(sessionId, id) {
     await this.start();
     const client = this.#client;
     const revision = this.#sessionRevision;
     if (revision % 2) throw Error("Session change in progress");
-    const [state, messages] = await Promise.all([client.getState(), client.getMessages()]);
+    const state = await client.getState();
+    const { messages } = await this.#readHistory(client, state.sessionId);
     if (
       client !== this.#client ||
       revision !== this.#sessionRevision ||
@@ -200,7 +212,8 @@ export class Agent {
     const client = this.#client;
     const revision = this.#sessionRevision;
     if (revision % 2) throw Error("Session change in progress");
-    const [state, messages] = await Promise.all([client.getState(), client.getMessages()]);
+    const state = await client.getState();
+    const { messages } = await this.#readHistory(client, state.sessionId);
     if (client !== this.#client || revision !== this.#sessionRevision)
       throw Error("Session changed while reading history");
     return historyPage(messages, state.sessionId, { before });
@@ -208,11 +221,13 @@ export class Agent {
   async harnessState() {
     await this.start();
     const client = this.#client;
+    const revision = this.#sessionRevision;
+    if (revision % 2) throw Error("Session change in progress");
     const state = await client.getState();
-    const tree = await client.getTree();
-    if (client !== this.#client || state.sessionId !== (await client.getState()).sessionId)
+    const { harness } = await this.#history.read(client, state.sessionId);
+    if (client !== this.#client || revision !== this.#sessionRevision)
       throw Error("Session changed while reading Harness state");
-    return { sessionId: state.sessionId, ...projectHarness(tree) };
+    return { sessionId: state.sessionId, ...harness };
   }
   async messages() {
     await this.start();
@@ -227,13 +242,7 @@ export class Agent {
     return this.#client.getAvailableThinkingLevels();
   }
   async sessions() {
-    const list = await SessionManager.list(config.workspace, config.sessionDir);
-    return list.map(({ id, name, firstMessage, modified }) => ({
-      id,
-      name,
-      firstMessage,
-      modified,
-    }));
+    return this.#catalog.list();
   }
   #checkPromptSession(sessionId) {
     if (sessionId !== undefined && sessionId !== this.#sessionId)
@@ -278,7 +287,16 @@ export class Agent {
     await this.start();
     if (view === "stats") return { stats: await this.#client.getSessionStats() };
     if (view === "forks") return { forks: await this.#client.getForkMessages() };
-    if (view === "history") return { history: projectSessionHistory(await this.#client.getTree()) };
+    if (view === "history") {
+      const client = this.#client;
+      const revision = this.#sessionRevision;
+      if (revision % 2) throw Error("Session change in progress");
+      const state = await client.getState();
+      const { entries, leafId } = await this.#history.read(client, state.sessionId);
+      if (client !== this.#client || revision !== this.#sessionRevision)
+        throw Error("Session changed while reading history");
+      return { history: projectSessionHistoryEntries(entries, leafId) };
+    }
     if (view === "last-reply") return { text: (await this.#client.getLastAssistantText()) ?? null };
     const [stats, forks, tree] = await Promise.all([
       this.#client.getSessionStats(),
@@ -323,6 +341,8 @@ export class Agent {
       throw new Error("Stop current run or wait for the session change.");
     this.#changing = true;
     this.#sessionRevision++;
+    if (["new", "switch", "delete", "clone", "fork"].includes(action))
+      this.#history = new SessionEntryIndex();
     try {
       if (action === "new")
         return await this.#sessionChange(this.#client, this.#client.newSession());

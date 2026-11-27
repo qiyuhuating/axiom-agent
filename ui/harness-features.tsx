@@ -6,12 +6,9 @@ import planCss from "../vendor/dsh/capabilities/PlanPreview.module.css";
 import { PresentedFileCard } from "../vendor/dsh/capabilities/PresentedFileCard.tsx";
 import teamCss from "../vendor/dsh/capabilities/TeamBoard.module.css";
 import { TodoPanel } from "../vendor/dsh/conversation/TodoPanel.tsx";
-import { Button } from "../vendor/dsh/primitives/Button.tsx";
-import { Modal } from "../vendor/dsh/primitives/Modal.tsx";
-import { StateDot } from "../vendor/dsh/primitives/StateDot.tsx";
 import { maskCredentials } from "./credential-mask.ts";
 import { api } from "./panel-shared.tsx";
-import { PanelSearch } from "./pi-primitives.tsx";
+import { Button, Modal, PanelSearch, StateDot } from "./pi-primitives.tsx";
 import {
   action,
   appendDraft,
@@ -365,9 +362,89 @@ function ToolPayload({ label, value }: { label: string; value: unknown }) {
     </>
   );
 }
+type ToolTextPage = {
+  text: string;
+  offset: number;
+  total: number;
+  next: number | null;
+  revision: string;
+};
+function PagedToolPayload({
+  label,
+  field,
+  initial,
+  sessionId,
+  toolId,
+}: {
+  label: string;
+  field: "args" | "result";
+  initial: ToolTextPage;
+  sessionId: string;
+  toolId: string;
+}) {
+  const [page, setPage] = useState(initial);
+  const [back, setBack] = useState<number[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const read = async (offset: number, backwards: boolean) => {
+    setLoading(true);
+    setError("");
+    try {
+      const next: ToolTextPage = await api(
+        "tool-history?" +
+          new URLSearchParams({
+            session: sessionId,
+            id: toolId,
+            view: "page",
+            field,
+            offset: String(offset),
+            revision: initial.revision,
+          }),
+      );
+      setBack((old) => (backwards ? old.slice(0, -1) : [...old, page.offset]));
+      setPage(next);
+    } catch (e) {
+      setError(String((e as Error).message ?? e));
+    } finally {
+      setLoading(false);
+    }
+  };
+  return (
+    <>
+      <h4>{label}</h4>
+      <pre>{page.text || "无记录"}</pre>
+      {page.total > 16384 && (
+        <div className="pi-history-controls">
+          <span>
+            {page.offset + 1}–{page.offset + page.text.length} / {page.total} 字符
+          </span>
+          <button
+            className="pi-more-button"
+            type="button"
+            disabled={loading || !back.length}
+            onClick={() => void read(back[back.length - 1], true)}
+          >
+            上一段
+          </button>
+          <button
+            className="pi-more-button"
+            type="button"
+            disabled={loading || page.next === null}
+            onClick={() => {
+              if (page.next !== null) void read(page.next, false);
+            }}
+          >
+            下一段
+          </button>
+        </div>
+      )}
+      {error && <p role="alert">{error}</p>}
+    </>
+  );
+}
 function ToolDetails({ tool }: { tool: Tool }) {
   const sessionId = useProjectionField("state")?.sessionId;
-  const [loaded, setLoaded] = useState<{ args?: unknown; result?: unknown } | null>(null);
+  const [loaded, setLoaded] = useState<{ args: ToolTextPage; result: ToolTextPage } | null>(null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   // biome-ignore lint/correctness/useExhaustiveDependencies: attempt explicitly retries the request.
@@ -376,7 +453,9 @@ function ToolDetails({ tool }: { tool: Tool }) {
     let active = true;
     setLoaded(null);
     setError("");
-    void api("tool-history?" + new URLSearchParams({ session: sessionId, id: tool.id }))
+    void api(
+      "tool-history?" + new URLSearchParams({ session: sessionId, id: tool.id, view: "page" }),
+    )
       .then((data) => {
         if (active) setLoaded(data);
       })
@@ -387,7 +466,6 @@ function ToolDetails({ tool }: { tool: Tool }) {
       active = false;
     };
   }, [tool.detailDeferred, tool.id, sessionId, attempt]);
-  const value = tool.detailDeferred ? loaded : tool;
   return (
     <div className="pi-tool-detail">
       {error ? (
@@ -397,10 +475,29 @@ function ToolDetails({ tool }: { tool: Tool }) {
             重试
           </button>
         </p>
-      ) : value ? (
+      ) : !tool.detailDeferred ? (
         <>
-          <ToolPayload label="调用参数" value={value.args} />
-          <ToolPayload label="返回结果" value={value.result} />
+          <ToolPayload label="调用参数" value={tool.args} />
+          <ToolPayload label="返回结果" value={tool.result} />
+        </>
+      ) : loaded && sessionId ? (
+        <>
+          <PagedToolPayload
+            key={"args:" + tool.id + ":" + loaded.args.revision}
+            label="调用参数"
+            field="args"
+            initial={loaded.args}
+            sessionId={sessionId}
+            toolId={tool.id}
+          />
+          <PagedToolPayload
+            key={"result:" + tool.id + ":" + loaded.result.revision}
+            label="返回结果"
+            field="result"
+            initial={loaded.result}
+            sessionId={sessionId}
+            toolId={tool.id}
+          />
         </>
       ) : (
         <p role="status">正在读取历史工具详情…</p>

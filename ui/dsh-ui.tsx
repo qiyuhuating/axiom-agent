@@ -1,11 +1,9 @@
 import { MessageSquare, Search, Trash2 } from "lucide-react";
-
 import React, { useState } from "react";
-import { Button } from "../vendor/dsh/primitives/Button.tsx";
-import { Modal } from "../vendor/dsh/primitives/Modal.tsx";
 import rowsCss from "../vendor/dsh/sidebar/Rows.module.css";
 import workspaceCss from "../vendor/dsh/sidebar/WorkspaceBrowser.module.css";
 import { maskCredentials } from "./credential-mask.ts";
+import { Button, Modal } from "./pi-primitives.tsx";
 import "../vendor/dsh/theme/base.css";
 import "../vendor/dsh/theme/design-platform.css";
 import "../vendor/dsh/theme/gradient-shadow-text.css";

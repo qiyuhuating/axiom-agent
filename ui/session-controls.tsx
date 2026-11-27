@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
-import { Button } from "../vendor/dsh/primitives/Button.tsx";
 import { writeClipboard } from "../vendor/dsh/primitives/clipboard.ts";
-import { Modal } from "../vendor/dsh/primitives/Modal.tsx";
 import { maskCredentials } from "./credential-mask.ts";
 import { api, errorBox, msg } from "./panel-shared.tsx";
+import { Button, Modal } from "./pi-primitives.tsx";
 import { action, changeSession, getSnapshot, useProjectionField } from "./projection.ts";
 
 const commands = {

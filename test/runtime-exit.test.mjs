@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import { once } from "node:events";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
@@ -28,7 +28,7 @@ test("desktop exits owned idle runtime, but not an already running independent r
   const config=join(dir,"config.json"), sessionDir=join(dir,"sessions");
   const runtimePort=await port(), rustTerminalPort=await port();
   await writeFile(config,JSON.stringify({workspace:join(dir,"workspace"),sessionDir,runtimePort,rustTerminalPort,terminalBackend:gateway?"rust":"node",discoverContext:false}));
-  const env={...process.env,AXIOM_CONFIG:config,AXIOM_DESKTOP:"1",PI_CODING_AGENT_DIR:join(dir,"pi-agent")};
+  const env={...process.env,AXIOM_CONFIG:config,AXIOM_DESKTOP:"1",PI_CODING_AGENT_DIR:join(dir,"pi-agent"),...(gateway?{PATH:join(root,"bin")+";"+process.env.PATH}:{})};
   const runtime="http://127.0.0.1:"+runtimePort;
   const children=[];
   let token;
@@ -74,11 +74,33 @@ test("desktop exits owned idle runtime, but not an already running independent r
     const terminals=await (await request("/api/terminals")).json();
     assert.ok(terminals.some(t=>t.id===id && t.exit===null));
     assert.ok((await request("/api/terminal-action",{action:"close",value:{id}})).ok);
-    assert.ok((await request("/api/runtime-stop",{})).ok);
+    // Idle watcher also reclaims work that finishes after its last host closes.
+    await until(async()=>!(await alive()));
     await until(()=>{try{process.kill(third.pid,0);return false;}catch(e){return e.code==="ESRCH";}});
+    const fourth=await host();
+    const fifth=await host();
+    assert.equal(fourth.pid,fifth.pid);
+    assert.ok((await fetch(fourth.base+"/api/state")).ok);
+    const piProcesses = process.platform === "win32"
+      ? JSON.parse(execFileSync("pwsh",["-NoProfile","-Command",
+          "$all=Get-CimInstance Win32_Process; $parents=@("+fourth.child.pid+"); $found=@(); while($parents.Count){$next=@($all|Where-Object {$_.ParentProcessId -in $parents});$found+=$next;$parents=@($next|ForEach-Object ProcessId)}; ConvertTo-Json -InputObject @($found|Where-Object {$_.CommandLine -match '--mode rpc'}|ForEach-Object ProcessId) -Compress"],{encoding:"utf8",windowsHide:true})).map(Number)
+      : [];
+    if(process.platform==="win32") assert.equal(piProcesses.length,1);
+    const killed=once(fourth.child,"exit");
+    fourth.child.kill();
+    await killed;
+    for(const pid of piProcesses) await until(()=>{try{process.kill(pid,0);return false;}catch(e){return e.code==="ESRCH";}});
+    // A surviving host owns a lease, regardless of who launched the runtime.
+    await delay(2200);
+    assert.equal(await alive(),true);
+    const killedLast=once(fifth.child,"exit");
+    fifth.child.kill();
+    await killedLast;
+    await until(()=>{try{process.kill(fourth.pid,0);return false;}catch(e){return e.code==="ESRCH";}});
+    console.log("CRASH_LEASE_PASS",JSON.stringify({survivingHostPreserved:true,idleRuntimeReaped:true,foregroundPiReaped:piProcesses.length}));
   }finally{
     if(token)try{await request("/api/runtime-stop",{});}catch{}
-    for(const child of children)if(child.exitCode===null){const exit=once(child,"exit");child.kill();await exit;}
+    for(const child of children)if(child.exitCode===null&&child.signalCode===null){const exit=once(child,"exit");child.kill();await exit;}
     await rm(dir,{recursive:true,force:true,maxRetries:8,retryDelay:250});
   }
 });

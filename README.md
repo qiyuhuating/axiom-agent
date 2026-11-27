@@ -38,7 +38,7 @@ A new foreground profile asks before mutating tools. Existing explicit permissio
 
 `npm run pi -- <arguments>` passes arguments to the upstream Pi CLI in the configured workspace. Native commands, extensions, skills and model management are available independently of the GUI. CLI sessions use Pi's native default store unless explicitly directed otherwise. Do not open the same active JSONL session in two writer processes.
 
-The background runtime survives Web server shutdown. On normal Windows desktop exit, an idle runtime started by that desktop is stopped; a runtime started by another host, an active terminal, queued/running jobs, or enabled schedules are preserved. Set "keepRuntimeOnExit": true in the desktop configuration to keep an idle runtime running. To stop it deliberately, finish your work and run `npm run runtime:stop`. Windows login autostart is optional, not enabled automatically.
+The background runtime survives Web server shutdown. A desktop-owned runtime uses authenticated local connection leases. On normal exit or loss of the last host connection, it stops when there are no live terminals, queued/running jobs, or enabled schedules. An independently started runtime or one with another connected host is preserved. Set "keepRuntimeOnExit": true in the desktop configuration to keep an idle runtime running. To stop it deliberately, finish your work and run `npm run runtime:stop`. Windows login autostart is optional, not enabled automatically.
 
 ### Windows desktop preview
 

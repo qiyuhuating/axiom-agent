@@ -8,6 +8,9 @@ export function projectHarness({ tree, leafId }) {
     byId.set(node.entry.id, node.entry);
     for (const child of node.children) nodes.push(child);
   }
+  return projectHarnessEntries(byId, leafId);
+}
+export function projectHarnessEntries(byId, leafId) {
   let current = leafId,
     goal = null,
     planMode;
@@ -57,4 +60,29 @@ export function projectSessionHistory({ tree, leafId }) {
     id = parentId;
   }
   return { rows, leafId };
+}
+
+export function projectSessionHistoryEntries(entries, leafId) {
+  const labels = new Map();
+  for (const entry of entries) {
+    if (entry.type === "label") {
+      if (entry.label) labels.set(entry.targetId, entry.label);
+      else labels.delete(entry.targetId);
+    }
+  }
+  const nodes = new Map(
+    entries.map((entry) => [entry.id, { entry, children: [], label: labels.get(entry.id) }]),
+  );
+  const tree = [];
+  for (const entry of entries) {
+    const node = nodes.get(entry.id);
+    const parent = entry.parentId !== entry.id && nodes.get(entry.parentId);
+    if (parent) parent.children.push(node);
+    else tree.push(node);
+  }
+  for (const node of nodes.values())
+    node.children.sort(
+      (a, b) => new Date(a.entry.timestamp).getTime() - new Date(b.entry.timestamp).getTime(),
+    );
+  return projectSessionHistory({ tree, leafId });
 }
