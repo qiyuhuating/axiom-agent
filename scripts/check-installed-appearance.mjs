@@ -55,8 +55,8 @@ try{
  await page.unroute("**/api/models");
  await page.unroute("**/api/levels");
  await page.reload();
- await page.waitForFunction(()=>document.querySelector("#status")?.textContent==="就绪"); await page.getByRole('button',{name:'Pi 会话'}).click();
- const sessionControls=page.getByRole('dialog',{name:'Pi 会话'});
+ await page.waitForFunction(()=>document.querySelector("#status")?.textContent==="就绪"); await page.getByRole('button',{name:'会话管理'}).click();
+ const sessionControls=page.getByRole('dialog',{name:'会话管理'});
  await sessionControls.locator('pre').waitFor();
  await sessionControls.getByLabel('操作').selectOption('history');
  await sessionControls.getByRole('list',{name:'会话历史'}).or(sessionControls.getByText('暂无会话记录。',{exact:true})).waitFor();
@@ -70,9 +70,9 @@ try{
  assert.equal(await page.locator("body").getAttribute("data-ds-dark-theme"),null);
  assert.equal(await page.locator(".inspector").isVisible(),false);
  const theme=()=>page.evaluate(()=>({bg:getComputedStyle(document.body).backgroundColor,sidebar:getComputedStyle(document.querySelector(".sidebar")).backgroundColor,radius:getComputedStyle(document.querySelector(".composer form")).borderRadius}));
- const a=await theme();assert.equal(a.bg,"rgb(252, 252, 253)");assert.equal(a.radius,"12px");
+ const a=await theme();assert.equal(a.bg,"rgb(250, 250, 250)");assert.equal(a.radius,"14px");
  await capture(page,"light.png");
- await page.locator("#theme-toggle").click();assert.ok((await theme()).bg==="rgb(22, 26, 33)");await capture(page,"dark.png");
+ await page.locator("#theme-toggle").click();assert.ok((await theme()).bg==="rgb(16, 16, 16)");await capture(page,"dark.png");
 await page.locator("#models").click();
 const darkModelMenu=page.getByRole("menu",{name:"模型和思考强度"});
 await darkModelMenu.waitFor();
@@ -287,9 +287,9 @@ await darkModelMenu.waitFor({state:"detached"});
  assert.ok(cornerRect&&utilityRect&&cornerRect.x>=utilityRect.x+utilityRect.width-1,
    "Harness right-panel control must follow the utility cluster");
  await capture(page,"header-corner.png");
- await page.locator(".pi-hero-mark").waitFor({state:"visible"});
+ await page.locator(".pi-welcome-title").waitFor({state:"visible"});
 
- assert.equal(await page.locator(".pi-hero-mark").textContent(),"π");
+ assert.equal(await page.locator(".pi-mark,.pi-hero-mark").count(),0);
  await capture(page,"hero-animated.png"); // InputBar composition matches upstream row -> tools/trailing group geometry.
  const inputGeometry=await page.evaluate(()=>{
   const row=document.querySelector("[data-composer-controls]");

@@ -41,7 +41,7 @@ export function SessionList({ sessions, current, disabled, onSelect, onDelete }:
   return (
     <>
       <div className={workspaceCss.root + " axiom-workspace-list"}>
-        <div className={workspaceCss.sectionHeader}>
+        <div className="axiom-session-heading">
           {searching ? (
             <input
               className="session-search"
@@ -60,7 +60,7 @@ export function SessionList({ sessions, current, disabled, onSelect, onDelete }:
               }}
             />
           ) : (
-            <span className={workspaceCss.sectionLabel}>会话历史</span>
+            <span className="axiom-session-heading-label">会话历史</span>
           )}
           <button
             type="button"

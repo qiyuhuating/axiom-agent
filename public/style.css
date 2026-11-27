@@ -133,7 +133,7 @@ body:not(.workbench-open) .inspector{display:none;}
 .wb-job{border:.5px solid var(--border);border-radius:12px;padding:9px;}
 .wb-job pre,.wb-approval{white-space:pre-wrap;overflow-wrap:anywhere;max-height:270px;}
 .git-patch{white-space:pre;font-size:11px;max-height:none;overflow:auto;}
-.patch-add{color:var(--dsw-alias-state-success-primary);background:var(--dsw-static-green-500-a08);}
+.patch-add{color:var(--dsw-alias-state-success-primary);background:color-mix(in srgb,var(--pi-link) 10%,transparent);}
 .patch-del{color:var(--danger);background:var(--dsw-static-red-400-a12);}
 .patch-meta{color:var(--muted);}
 details{border:0;padding:4px 0;margin-bottom:4px;}
@@ -596,14 +596,20 @@ body:not(.workbench-open) .axiom-frame > .inspector {display:flex;pointer-events
 /* Pi-native workbench: owned presentation layer. Existing feature adapters
    retain their internal styles until they are migrated independently. */
 body {
-  --pi-base:#fcfcfd;
-  --pi-rail:#f1f3f6;
+  --pi-base:#fafafa;
+  --pi-rail:#f2f2f2;
   --pi-surface:#ffffff;
-  --pi-line:#d8dde5;
-  --pi-ink:#202631;
-  --pi-muted:#526174;
-  --pi-accent:#2856b6;
-  --pi-active:#e1e9fa;
+  --pi-line:#dedede;
+  --pi-ink:#202020;
+  --pi-muted:#626262;
+  --pi-accent:#242424;
+  --pi-on-accent:#ffffff;
+  --pi-active:#e9e9e9;
+  --pi-hover:#e9e9e9;
+  --pi-focus:#777777;
+  --pi-soft-line:#d3d3d3;
+  --pi-link:#355c9c;
+  --pi-radius:8px;
   --bg:var(--pi-base);
   --panel:var(--pi-rail);
   --ink:var(--pi-ink);
@@ -618,14 +624,19 @@ body {
   font:15px/1.6 var(--dsw-font-family);
 }
 body[data-ds-dark-theme] {
-  --pi-base:#161a21;
-  --pi-rail:#1b202a;
-  --pi-surface:#202631;
-  --pi-line:#394352;
-  --pi-ink:#eef2f8;
-  --pi-muted:#a9b5c6;
-  --pi-accent:#91b5ff;
-  --pi-active:#293a58;
+  --pi-base:#101010;
+  --pi-rail:#171717;
+  --pi-surface:#1e1e1e;
+  --pi-line:#303030;
+  --pi-ink:#ededed;
+  --pi-muted:#a3a3a3;
+  --pi-accent:#eeeeee;
+  --pi-on-accent:#171717;
+  --pi-active:#292929;
+  --pi-hover:#242424;
+  --pi-focus:#a0a0a0;
+  --pi-soft-line:#444444;
+  --pi-link:#a8c4f0;
 }
 .pi-shell { background:var(--pi-base); color:var(--pi-ink); }
 .pi-shell:not([data-resizing]) {transition:none;}
@@ -635,9 +646,6 @@ body[data-ds-dark-theme] {
 }
 .pi-shell .sidebar .brand {height:48px;padding:0 6px;gap:9px;}
 .pi-shell .brand-name {font-size:17px;letter-spacing:0;}
-.pi-mark,.pi-hero-mark {display:grid;place-items:center;background:var(--pi-accent);color:var(--pi-base);font-family:Georgia,serif;font-weight:700;line-height:1;}
-.pi-mark {width:30px;height:30px;font-size:23px;border-radius:8px;}
-.pi-hero-mark {width:56px;height:56px;font-size:39px;border-radius:15px;}
 .pi-shell #new-session-row {padding:0;}
 .pi-shell #new {width:100%;height:38px;border:1px solid var(--pi-line);border-radius:8px;background:var(--pi-surface);color:var(--pi-ink);font-size:14px;gap:8px;}
 .pi-shell #new:hover:not(:disabled) {background:var(--pi-active);}
@@ -674,10 +682,10 @@ body.sidebar-collapsed .pi-shell #new {padding:0;border:0;}
   padding:10px 12px;
 }
 .pi-shell .axiom-conversation-body .composer form:focus-within {border-color:var(--pi-accent);}
-.pi-shell .composer .axiom-lexical-input {min-height:90px;line-height:1.6;}
+.pi-shell .composer .axiom-lexical-input {min-height:68px;line-height:1.6;}
 .pi-shell .composer .axiom-input-controls {gap:8px;}
 .pi-shell .composer .axiom-input-controls button,.pi-shell .composer .axiom-input-controls select {min-height:32px;}
-.pi-shell .composer #send {background:var(--pi-accent);color:var(--pi-base);width:36px;height:36px;border-radius:8px;}
+.pi-shell .composer #send {background:var(--pi-accent);color:var(--pi-on-accent);width:36px;height:36px;border-radius:8px;}
 .pi-shell .composer #stop {width:36px;height:36px;border-radius:8px;}
 .pi-shell .composer small {color:var(--pi-muted);font-size:12px;}
 .pi-context-strip {display:flex;align-items:center;gap:14px;min-width:0;width:100%;padding:0 4px 8px;color:var(--pi-muted);font-size:12px;}
@@ -721,35 +729,14 @@ body.sidebar-collapsed .pi-shell #new {padding:0;border:0;}
   --dsh-composer-card-max-width:var(--pi-reading-width);
 }
 
-/* Quiet, work-oriented palette and shared interactive rhythm. */
-body {
-  --pi-rail:#f2f4f4;
-  --pi-line:#d9dfe0;
-  --pi-ink:#202b2e;
-  --pi-muted:#536367;
-  --pi-accent:#176b61;
-  --pi-active:#e0eeeb;
-  --pi-surface:#ffffff;
-  --pi-radius:8px;
-}
-body[data-ds-dark-theme] {
-  --pi-rail:#1c2427;
-  --pi-line:#3b494c;
-  --pi-ink:#edf2f1;
-  --pi-muted:#a8b9b8;
-  --pi-accent:#8bcfc0;
-  --pi-active:#293f3c;
-  --pi-surface:#20282b;
-}
-.pi-shell .pi-mark {border-radius:8px;}
-.pi-shell .pi-hero-mark {width:48px;height:48px;font-size:35px;border-radius:12px;}
+/* Shared interactive rhythm. */
 .pi-shell .axiom-conversation-body[data-phase='hero'] .welcome {gap:18px;}
 .pi-shell .pi-welcome-title {font-size:clamp(28px, 3.2cqi, 38px);letter-spacing:-.025em;line-height:1.25;}
 .pi-shell .pi-hero-description {max-width:36ch;text-align:center;line-height:1.6;font-size:15px;}
-.pi-shell #new {background:var(--pi-accent);color:var(--pi-base);border-color:transparent;font-weight:600;}
+.pi-shell #new {background:var(--pi-accent);color:var(--pi-on-accent);border-color:transparent;font-weight:600;}
 .pi-shell #new:hover:not(:disabled) {background:color-mix(in srgb,var(--pi-accent) 90%,var(--pi-ink));}
 body.sidebar-collapsed .pi-shell #new {background:var(--pi-accent);}
-.pi-shell #sessions .session-row.active {box-shadow:inset 2px 0 var(--pi-accent);}
+.pi-shell #sessions .session-row.active {box-shadow:none;}
 .pi-shell .axiom-panel-list button[aria-current='page'] {color:var(--pi-accent);font-weight:600;}
 .pi-shell .sidebar button,.pi-shell .composer button,.pi-shell .controls button {transition:background-color 120ms ease-out,color 120ms ease-out;}
 .pi-shell .composer :is(#send,#stop):active:not(:disabled),
@@ -768,7 +755,7 @@ body.sidebar-collapsed .pi-shell #new {background:var(--pi-accent);}
 .pi-shell .axiom-chat-column .markdown h3 {font-size:1.08em;}
 .pi-shell .axiom-chat-column .markdown pre {background:var(--pi-rail);padding:14px 16px;overflow:auto;}
 .pi-shell .axiom-chat-column .markdown blockquote {border-left:3px solid var(--pi-line);padding-left:14px;color:var(--pi-muted);}
-.pi-shell .axiom-chat-column .markdown a {color:var(--pi-accent);text-underline-offset:3px;}
+.pi-shell .axiom-chat-column .markdown a {color:var(--pi-link);text-underline-offset:3px;}
 @media(max-width:767px) {
   .pi-shell .pi-key-hint {display:none;}
   .pi-shell .pi-starter-tasks {padding-top:10px;}
@@ -814,7 +801,7 @@ body.sidebar-collapsed .pi-shell #new {background:var(--pi-accent);}
 .pi-file-row[aria-expanded] svg:last-of-type {color:var(--pi-accent);}
 .pi-file-row > span:last-child {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .pi-file-row[data-hidden] {color:var(--pi-muted);}
-.pi-file-row[data-selected] {background:var(--pi-active);box-shadow:inset 2px 0 var(--pi-accent);color:var(--pi-accent);}
+.pi-file-row[data-selected] {background:var(--pi-active);box-shadow:none;color:var(--pi-accent);}
 .pi-file-status {display:flex;align-items:center;gap:8px;overflow-wrap:anywhere;padding:8px 12px;font-size:12px;color:var(--pi-muted);margin:0;}
 .pi-file-status button {padding:3px 7px;flex:none;}
 .pi-workbench-guide {height:100%;overflow:auto;padding:20px 16px;color:var(--pi-ink);}
@@ -862,20 +849,21 @@ body.sidebar-collapsed .pi-shell #new {background:var(--pi-accent);}
 body {
   --pi-code-font:"Cascadia Code","Cascadia Mono",Consolas,monospace;
   --pi-code-keyword:#7042a1;
-  --pi-code-string:#246a46;
+  --pi-code-string:#825e35;
   --pi-code-number:#99521b;
   --pi-code-type:#1c6387;
   --pi-code-error:#b33a37;
 }
 body[data-ds-dark-theme] {
   --pi-code-keyword:#c6a4f2;
-  --pi-code-string:#a5d6a7;
+  --pi-code-string:#d7b98b;
   --pi-code-number:#e9b579;
   --pi-code-type:#8fc9e5;
   --pi-code-error:#ff9691;
 }
+.pi-shell #transcript .axiom-message.user {width:100%;max-width:100%;padding:0;background:transparent;border-radius:0;}
 .pi-shell .axiom-message .pi-user-stack {max-width:min(680px,85%);}
-.pi-shell .pi-user-bubble {background:var(--pi-active);color:var(--pi-ink);border-radius:12px;line-height:1.65;}
+.pi-shell .pi-user-bubble {background:var(--pi-active);color:var(--pi-ink);border-radius:10px;line-height:1.65;}
 .pi-shell .axiom-sidebar-right-panel {
   --dsw-alias-bg-base:var(--pi-base);
   --dsw-alias-label-primary:var(--pi-ink);
@@ -884,12 +872,12 @@ body[data-ds-dark-theme] {
   --dsw-alias-interactive-bg-hover:var(--pi-active);
 }
 .pi-shell .pi-file-explorer,.pi-shell .axiom-trajectory-pane,.pi-shell .pi-workbench-guide {background:var(--pi-base);}
-.pi-shell .pi-panel-search input:focus-visible {outline:none;}
-.pi-panel-search:focus-within {outline:2px solid var(--pi-accent);outline-offset:2px;}
+.pi-shell .pi-panel-search input:focus-visible {outline:none;box-shadow:none;}
+.pi-panel-search:focus-within {outline:1px solid var(--pi-focus);outline-offset:0;border-color:var(--pi-focus);}
 .pi-tool-toolbar {position:sticky;top:-10px;z-index:1;padding:10px 0 2px;margin-top:-10px;background:var(--pi-base);border-bottom:1px solid var(--pi-line);}
 .pi-shell .pi-tool-detail pre,.pi-shell .git-patch,.pi-shell .axiom-chat-column .markdown pre {font-family:var(--pi-code-font);}
 .pi-shell .git-patch {background:var(--pi-rail);}
-.pi-shell .patch-add {color:var(--pi-code-string);}
+.pi-shell .patch-add {color:var(--pi-link);}
 .pi-shell .patch-del {color:var(--pi-code-error);}
 .axiom-model-menu[data-menu-material] {background:var(--pi-surface);border:1px solid var(--pi-line);border-radius:10px;color:var(--pi-ink);}
 .axiom-model-menu .axiom-model-back,.axiom-model-menu .axiom-model-provider {color:var(--pi-muted);}
@@ -937,3 +925,94 @@ body[data-ds-dark-theme] {
 .pi-modal-body {display:flex;flex-direction:column;min-width:0;padding:8px 20px 0;}
 .pi-modal-footer {display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:0 20px;}
 .pi-modal-mask {border:0;padding:0;width:100%;height:100%;border-radius:0;}
+
+
+/* Axiom: neutral workspace palette. Vendor adapters inherit these aliases;
+   semantic errors/warnings and ANSI terminal colors remain distinguishable. */
+body, body[data-ds-dark-theme] {
+  --dsw-alias-bg-base:var(--pi-base);
+  --dsw-alias-bg-layer-1:var(--pi-base);
+  --dsw-alias-bg-layer-2:var(--pi-surface);
+  --dsw-alias-bg-layer-3:var(--pi-surface);
+  --dsw-alias-bg-module-platform:var(--pi-rail);
+  --dsw-alias-bg-overlay:var(--pi-active);
+  --dsw-alias-bg-multi-select:var(--pi-active);
+  --dsw-alias-label-primary:var(--pi-ink);
+  --dsw-alias-label-secondary:var(--pi-muted);
+  --dsw-alias-label-tertiary:var(--pi-muted);
+  --dsw-alias-label-primary-foreground:var(--pi-on-accent);
+  --dsw-alias-label-on-color:var(--pi-on-accent);
+  --dsw-alias-brand-primary:var(--pi-accent);
+  --dsw-alias-brand-text:var(--pi-ink);
+  --dsw-alias-border-l1:var(--pi-line);
+  --dsw-alias-border-l2:var(--pi-line);
+  --dsw-alias-border-l3:var(--pi-line);
+  --dsw-alias-border-l4:var(--pi-soft-line);
+  --dsw-alias-border-selected:var(--pi-focus);
+  --dsw-alias-button-primary-fill:var(--pi-accent);
+  --dsw-alias-button-primary-hover:color-mix(in srgb,var(--pi-accent) 85%,var(--pi-base));
+  --dsw-alias-button-info-fill:var(--pi-accent);
+  --dsw-alias-button-info-hover:var(--dsw-alias-button-primary-hover);
+  --dsw-alias-interactive-bg-active:var(--pi-active);
+  --dsw-alias-interactive-bg-hover:var(--pi-hover);
+  --dsw-alias-interactive-bg-hover-solid:var(--pi-hover);
+  --dsw-alias-interactive-bg-hover-accent:var(--pi-active);
+  --dsw-alias-state-success-primary:var(--pi-link);
+  --dsw-specific-sidebar-fill:var(--pi-rail);
+  --dsw-specific-bubble:var(--pi-active);
+  --dsw-specific-menu:var(--pi-surface);
+}
+.axiom-wordmark-compact {display:none;font-size:20px;line-height:1;font-weight:700;letter-spacing:-.06em;color:var(--pi-ink);}
+.pi-shell .sidebar .brand {height:44px;padding:0 8px;gap:8px;}
+.pi-shell .sidebar .brand-name {display:flex;align-items:baseline;gap:7px;font-size:19px;font-weight:650;letter-spacing:-.04em;}
+.axiom-brand-caption {font-size:11px;font-weight:500;color:var(--pi-muted);letter-spacing:0;}
+body.sidebar-collapsed .pi-shell .sidebar .brand-name {display:none;}
+body.sidebar-collapsed .axiom-wordmark-compact {display:inline;}
+.pi-shell > .sidebar {padding:10px 10px 8px;gap:8px;}
+.pi-shell #new {height:36px;border:1px solid var(--pi-soft-line);background:var(--pi-surface);color:var(--pi-ink);font-size:13px;font-weight:550;justify-content:flex-start;padding:0 10px;}
+.pi-shell #new:hover:not(:disabled) {background:var(--pi-active);}
+body.sidebar-collapsed .pi-shell #new {justify-content:center;background:var(--pi-surface);padding:0;}
+.pi-shell #sessions .session-row.active,.pi-shell .axiom-panel-list button[aria-current='page'] {background:var(--pi-active);color:var(--pi-ink);}
+.pi-shell #sessions .session-select {height:34px;font-size:13px;}
+.pi-shell .pi-conversation > header {min-height:52px;padding:8px 18px;border-bottom-color:var(--pi-line);}
+.pi-shell .pi-panel-header {min-height:52px;padding:10px 14px;border-bottom:1px solid var(--pi-line);}
+.pi-shell .pi-workspace-label {font-size:12px;font-weight:450;}
+.pi-shell .axiom-conversation-body[data-phase='hero'] .welcome {gap:0;}
+.pi-shell .pi-welcome-title {font-size:clamp(25px,2.5cqi,32px);font-weight:550;letter-spacing:-.035em;line-height:1.25;}
+.pi-shell .pi-hero-description {max-width:48ch;font-size:14px;}
+.pi-shell .axiom-conversation-body .composer form {border-radius:14px;border-color:var(--pi-soft-line);box-shadow:none;padding:12px 12px 9px;}
+.pi-shell .axiom-conversation-body .composer form:focus-within {border-color:var(--pi-focus);}
+.pi-shell .composer #send {border-radius:9px;color:var(--pi-on-accent);background:var(--pi-accent);}
+.pi-shell .composer #attach-button {background:transparent;}
+.pi-shell .pi-starter-tasks {justify-content:center;gap:6px;padding-top:12px;}
+.pi-shell .pi-starter-tasks button {min-height:32px;padding:5px 9px;background:transparent;border-color:var(--pi-line);font-size:12px;}
+.pi-shell .pi-starter-tasks button:hover:not(:disabled) {color:var(--pi-ink);border-color:var(--pi-soft-line);}
+.pi-shell .pi-file-row[data-selected] {background:var(--pi-active);color:var(--pi-ink);box-shadow:none;}
+.pi-shell .pi-tool-filters button[aria-pressed=true] {border-color:var(--pi-soft-line);color:var(--pi-ink);}
+.pi-shell .pi-tool-entry[data-status=done] .pi-tool-dot,.pi-state-dot[data-state=done] {background:var(--pi-muted);}
+.pi-shell .pi-tool-row {min-height:48px;}
+.pi-shell .pi-guide-entry {border-radius:0;}
+.pi-shell .pi-guide-heading h2 {font-size:20px;font-weight:550;}
+.pi-shell .pi-guide-kicker {color:var(--pi-muted);letter-spacing:.04em;}
+
+.pi-shell .axiom-chat-column .markdown pre {border-radius:9px;background:var(--pi-rail);}
+.pi-shell :is(button,select,input,textarea):focus-visible,.pi-button:focus-visible {outline-color:var(--pi-focus);}
+.pi-modal-mask[data-blur=true] {backdrop-filter:none;}
+.pi-modal-card {box-shadow:0 14px 40px rgb(0 0 0 / .24);}
+.pi-icon-button {background:transparent;border-color:transparent;}
+.pi-icon-button:hover {background:var(--pi-active);}
+@media(max-width:767px) {
+  .pi-shell .pi-conversation > header {padding:8px 12px;}
+  .pi-shell .pi-starter-tasks {justify-content:flex-start;}
+}
+
+/* Session history has its own heading, independent of the workspace adapter. */
+.axiom-session-heading {display:flex;align-items:center;justify-content:space-between;gap:6px;height:36px;padding:0 7px;margin:8px 0 3px;min-width:0;}
+.axiom-session-heading-label {flex:1;min-width:0;color:var(--pi-muted);font-size:12px;font-weight:550;}
+.axiom-session-heading .session-search {flex:1;min-width:0;height:30px;border:1px solid var(--pi-line);border-radius:6px;padding:0 8px;background:var(--pi-base);color:var(--pi-ink);}
+.axiom-session-heading button {flex:none;}
+.pi-shell .axiom-conversation-body[data-phase='active'] .composer .axiom-lexical-input {min-height:52px;}
+.pi-shell .axiom-conversation-body[data-phase='active'] .composer form {padding-top:8px;}
+.pi-shell .axiom-chat-column .axiom-message[data-chat-flow-kind='user'] {margin-top:6px;}
+.pi-shell #transcript article.axiom-message {margin-bottom:6px;}
+.pi-shell #transcript article.axiom-message.user {margin-left:0;}

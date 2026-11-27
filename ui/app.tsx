@@ -377,7 +377,7 @@ function App() {
     forgetRightbarSession(id);
   }, []);
   const [sessionControlsOpen, setSessionControlsOpen] = useState(false);
-  const [mode, setMode] = useState(() => localStorage.getItem("axiom.appearance") || "system");
+  const [mode, setMode] = useState(() => localStorage.getItem("axiom.appearance") || "dark");
   const [systemDark, setSystemDark] = useState(
     () => matchMedia("(prefers-color-scheme: dark)").matches,
   );
@@ -456,12 +456,12 @@ function App() {
         }
       >
         <div className={"brand " + sidebarCss.logoRow}>
-          <span className={sidebarCss.brandMark}>
-            <span className="pi-mark" aria-hidden="true">
-              π
-            </span>
+          <span className="axiom-wordmark-compact" aria-hidden="true">
+            A
           </span>
-          <div className={"brand-name " + sidebarCss.brandName}>Axiom Agent</div>
+          <div className={"brand-name " + sidebarCss.brandName}>
+            Axiom<span className="axiom-brand-caption">Agent</span>
+          </div>
           <button
             type="button"
             id="sidebar-toggle"
@@ -519,7 +519,7 @@ function App() {
           >
             <SunMoon size={18} />
           </button>
-          <span className="pi-engine-label">Pi · 本地运行</span>
+          <span className="pi-engine-label">本地工作台</span>
         </footer>
       </aside>
       <div className="axiom-center pi-center">
@@ -562,7 +562,7 @@ function App() {
                     id="session-actions"
                     className={conversationCss.headerMenuButton}
                     type="button"
-                    aria-label="Pi 会话"
+                    aria-label="会话管理"
                     disabled={unavailable}
                     onClick={() => setSessionControlsOpen(true)}
                   >
@@ -645,13 +645,10 @@ function App() {
             >
               {empty && (
                 <div className={"welcome " + heroCss.headline}>
-                  <span className="pi-hero-mark" aria-hidden="true">
-                    π
-                  </span>
                   <span className={heroCss.titleGroup}>
-                    <span className="pi-welcome-title">今天做什么？</span>
+                    <span className="pi-welcome-title">开始新的任务</span>
                     <small className="pi-hero-description">
-                      从当前工作区开始。阅读代码、解决问题，或构建新的功能。
+                      阅读代码、解决问题，或构建新的功能。
                     </small>
                   </span>
                 </div>

@@ -69,14 +69,14 @@ try {
     await page.goto(ready);
     await page.waitForFunction(() => document.querySelector("#status")?.textContent?.trim() === "就绪");
     if (verifyStream && process.env.AXIOM_TEST_SCREENSHOTS) {
-      await page.screenshot({ path: join(process.env.AXIOM_TEST_SCREENSHOTS, "pi-light.jpg"), quality: 85, animations: "disabled" });
+      await page.screenshot({ path: join(process.env.AXIOM_TEST_SCREENSHOTS, "axiom-dark.jpg"), quality: 85, animations: "disabled" });
     }
     const geometry = await page.evaluate(() => {
       const rect = (selector) => document.querySelector(selector).getBoundingClientRect().toJSON();
       const form = document.querySelector("#form");
       return {
         dpr: devicePixelRatio, width: innerWidth, height: innerHeight,
-        header: rect("main > header"), form: rect("#form"), send: rect("#send"), welcome: rect(".welcome"), mark: rect(".pi-hero-mark"), model: rect("#models"),
+        header: rect("main > header"), form: rect("#form"), send: rect("#send"), welcome: rect(".welcome"), mark: rect(".pi-welcome-title"), model: rect("#models"),
         bodyScroll: document.body.scrollWidth, rowScroll: form.scrollWidth, rowWidth: form.clientWidth,
         font: getComputedStyle(document.querySelector("#prompt")).fontSize,
         bg: getComputedStyle(document.body).backgroundColor
@@ -93,7 +93,18 @@ try {
     assert.ok(Math.abs(pixelHeight - height * deviceScaleFactor) <= 1);
     if (width >= 2560) assert.ok(geometry.form.width >= 1000, JSON.stringify(geometry));
     assert.equal(geometry.font, "16px");
-    assert.equal(geometry.bg, "rgb(252, 252, 253)");
+    assert.equal(await page.locator(".pi-mark,.pi-hero-mark").count(), 0);
+    const palette = await page.evaluate(() => {
+      const color = (selector, property) => getComputedStyle(document.querySelector(selector))[property];
+      return [color("body","backgroundColor"),color(".sidebar","backgroundColor"),color("#form","backgroundColor"),color("#send","backgroundColor"),color("#send","color"),color("#new","backgroundColor")];
+    });
+    for (const value of palette) {
+      const channels = value.match(/\d+/g)?.slice(0,3).map(Number);
+      assert.ok(channels?.length === 3 && channels.every(channel => channel === channels[0]), "Non-neutral shell color: " + value);
+    }
+    assert.equal(palette[3], "rgb(238, 238, 238)");
+    assert.equal(palette[4], "rgb(23, 23, 23)");
+    assert.equal(geometry.bg, "rgb(16, 16, 16)");
     assert.ok(geometry.header.width > 0 && geometry.form.width > 0 && geometry.send.width > 0);
     assert.ok(geometry.form.x >= -1 && geometry.form.right <= width + 1, JSON.stringify(geometry));
     assert.ok(geometry.form.y >= 0 && geometry.form.bottom <= height + 1, JSON.stringify(geometry));
@@ -125,11 +136,12 @@ try {
       await page.locator("#sidebar-open").click();
       await page.locator("#theme-toggle").click();
     });
-    assert.equal(await page.locator("body").evaluate(el => el.hasAttribute("data-ds-dark-theme")), true);
+    assert.equal(await page.locator("body").evaluate(el => el.hasAttribute("data-ds-dark-theme")), false);
     if (verifyStream) {
       if (process.env.AXIOM_TEST_SCREENSHOTS) {
-        await page.screenshot({ path: join(process.env.AXIOM_TEST_SCREENSHOTS, "pi-dark.jpg"), quality: 85, animations: "disabled" });
+        await page.screenshot({ path: join(process.env.AXIOM_TEST_SCREENSHOTS, "axiom-light.jpg"), quality: 85, animations: "disabled" });
       }
+      await page.locator("#theme-toggle").click();
       // Exercise the actual UI against synthetic Pi events, without paid inference.
       await page.evaluate(() => {
         window.axiomAppEvents = window.axiomTestEvents;
@@ -377,9 +389,9 @@ try {
       await page.unroute("**/api/models");
       await page.unroute("**/api/action");
       console.log("PI_MODEL_KEYBOARD_PASS", JSON.stringify({ modelActions, focusMoved: true }));
-      const trigger=page.getByRole("button",{name:"Pi 会话"});
+      const trigger=page.getByRole("button",{name:"会话管理"});
       await trigger.click();
-      const dialog=page.getByRole("dialog",{name:"Pi 会话"});
+      const dialog=page.getByRole("dialog",{name:"会话管理"});
       await dialog.waitFor();
       await page.keyboard.press("Tab");
       assert.equal(await dialog.evaluate(el=>el.contains(document.activeElement)),true);

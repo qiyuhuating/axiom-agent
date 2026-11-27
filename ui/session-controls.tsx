@@ -120,7 +120,7 @@ export function SessionControls({ onClose }: { onClose: () => void }) {
   return (
     <Modal
       open
-      title="Pi 会话"
+      title="会话管理"
       closeLabel="关闭"
       onClose={() => {
         if (!applying) onClose();
