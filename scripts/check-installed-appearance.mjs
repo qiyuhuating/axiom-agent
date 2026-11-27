@@ -70,9 +70,9 @@ try{
  assert.equal(await page.locator("body").getAttribute("data-ds-dark-theme"),null);
  assert.equal(await page.locator(".inspector").isVisible(),false);
  const theme=()=>page.evaluate(()=>({bg:getComputedStyle(document.body).backgroundColor,sidebar:getComputedStyle(document.querySelector(".sidebar")).backgroundColor,radius:getComputedStyle(document.querySelector(".composer form")).borderRadius}));
- const a=await theme();assert.equal(a.bg,"rgb(255, 255, 255)");assert.equal(a.radius,"28px");
+ const a=await theme();assert.equal(a.bg,"rgb(252, 252, 253)");assert.equal(a.radius,"12px");
  await capture(page,"light.png");
- await page.locator("#theme-toggle").click();assert.ok((await theme()).bg!=="rgb(255, 255, 255)");await capture(page,"dark.png");
+ await page.locator("#theme-toggle").click();assert.ok((await theme()).bg==="rgb(22, 26, 33)");await capture(page,"dark.png");
 await page.locator("#models").click();
 const darkModelMenu=page.getByRole("menu",{name:"模型和思考强度"});
 await darkModelMenu.waitFor();
@@ -287,9 +287,9 @@ await darkModelMenu.waitFor({state:"detached"});
  assert.ok(cornerRect&&utilityRect&&cornerRect.x>=utilityRect.x+utilityRect.width-1,
    "Harness right-panel control must follow the utility cluster");
  await capture(page,"header-corner.png");
- await page.locator(".welcome > span").first().hover();
- if(await page.evaluate(()=>matchMedia("(hover: hover) and (prefers-reduced-motion: no-preference)").matches))
-   assert.equal(await page.locator(".welcome svg animate").count(),1,"Original SVG fish morph must animate on hover");
+ await page.locator(".pi-hero-mark").waitFor({state:"visible"});
+
+ assert.equal(await page.locator(".pi-hero-mark").textContent(),"π");
  await capture(page,"hero-animated.png"); // InputBar composition matches upstream row -> tools/trailing group geometry.
  const inputGeometry=await page.evaluate(()=>{
   const row=document.querySelector("[data-composer-controls]");
@@ -302,7 +302,7 @@ await darkModelMenu.waitFor({state:"detached"});
    "Harness input tools must precede the model and submit group");
  assert.ok(inputGeometry.scroll<=inputGeometry.width+2,"InputBar must not overflow its own row");
  const composerSurface=await page.locator("#form").evaluate(element=>getComputedStyle(element).boxShadow);
- assert.notEqual(composerSurface,"none","Harness InputBar must use original elevation token");
+ assert.notEqual(composerSurface,"none","Pi composer must have a visible surface");
  await page.locator("#prompt").click();
  await page.keyboard.insertText("fixture temporary text");
  await page.keyboard.press("Control+A");

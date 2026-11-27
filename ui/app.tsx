@@ -20,7 +20,7 @@ import heroCss from "../vendor/dsh/conversation/HeroShell.module.css";
 import inputCss from "../vendor/dsh/conversation/InputBar.module.css";
 import frameCss from "../vendor/dsh/layout/AppFrame.module.css";
 import { writeClipboard } from "../vendor/dsh/primitives/clipboard.ts";
-import { FishLogo } from "../vendor/dsh/primitives/FishLogo.tsx";
+
 import { StateDot } from "../vendor/dsh/primitives/StateDot.tsx";
 import { UserMessageBubble } from "../vendor/dsh/primitives/UserMessageBubble.tsx";
 import settingsCss from "../vendor/dsh/sidebar/SettingsRoot.module.css";
@@ -33,7 +33,7 @@ import {
   ObservedChanges,
   PlanDock,
 } from "./harness-features.tsx";
-import { HeroMark } from "./hero-mark.tsx";
+
 import { PiModelSelect } from "./model-select.tsx";
 import {
   action,
@@ -237,7 +237,7 @@ function App() {
   };
   return (
     <div
-      className={frameCss.frame + " axiom-frame"}
+      className="axiom-frame pi-shell"
       data-harness-shell
       data-sidebar-collapsed={l.collapsed}
       data-rightbar-fullscreen={(l.workbenchOpen && (l.fullscreen || l.width < 768)) || undefined}
@@ -262,7 +262,9 @@ function App() {
       >
         <div className={"brand " + sidebarCss.logoRow}>
           <span className={sidebarCss.brandMark}>
-            <FishLogo size={23} />
+            <span className="pi-mark" aria-hidden="true">
+              π
+            </span>
           </span>
           <div className={"brand-name " + sidebarCss.brandName}>Axiom Agent</div>
           <button
@@ -273,7 +275,7 @@ function App() {
             aria-label="收起侧栏"
             onClick={layoutActions.collapse}
           >
-            <PanelLeft size={16} />
+            <PanelLeft size={18} />
           </button>
         </div>
         <div id="new-session-row" className={sidebarCss.newSessionRow}>
@@ -285,7 +287,7 @@ function App() {
             disabled={locked}
             onClick={() => void run(() => changeSession("new"))}
           >
-            <Plus size={16} />
+            <Plus size={18} />
             <span>新建会话</span>
           </button>
         </div>
@@ -310,7 +312,7 @@ function App() {
             aria-label="设置"
             onClick={() => openPanel("settings")}
           >
-            <Settings size={16} />
+            <Settings size={18} />
             <span>设置</span>
           </button>
           <button
@@ -320,13 +322,13 @@ function App() {
             aria-label="切换外观"
             onClick={toggleTheme}
           >
-            <SunMoon size={16} />
+            <SunMoon size={18} />
           </button>
-          本地工作台 · Pi 1.5.2
+          <span className="pi-engine-label">Pi · 本地运行</span>
         </footer>
       </aside>
-      <div className={frameCss.centerCol + " axiom-center"}>
-        <main className={conversationCss.root} data-phase={empty ? "hero" : "active"}>
+      <div className="axiom-center pi-center">
+        <main className="pi-conversation" data-phase={empty ? "hero" : "active"}>
           <header
             className={conversationCss.header + (empty ? " " + conversationCss.headerBlank : "")}
           >
@@ -338,10 +340,10 @@ function App() {
                 aria-label="展开侧栏"
                 onClick={layoutActions.expand}
               >
-                <PanelLeft size={16} />
+                <PanelLeft size={18} />
               </button>
             </div>
-            <div className={conversationCss.titleRow}>
+            <div className={conversationCss.titleRow + " pi-header-row"}>
               <div className={conversationCss.titleCluster}>
                 <nav className={conversationCss.crumbs} aria-label="会话层级">
                   {!empty && (
@@ -355,7 +357,7 @@ function App() {
                     </span>
                   )}
                 </nav>
-                <span id="workspace" hidden title={workspace}>
+                <span id="workspace" className="pi-workspace-label" title={workspace}>
                   {workspaceName}
                 </span>
               </div>
@@ -369,7 +371,7 @@ function App() {
                     disabled={unavailable}
                     onClick={() => setSessionControlsOpen(true)}
                   >
-                    <Ellipsis size={16} />
+                    <Ellipsis size={20} />
                   </button>
                   <span id="status" role="status">
                     <StateDot
@@ -447,9 +449,12 @@ function App() {
             >
               {empty && (
                 <div className={"welcome " + heroCss.headline}>
-                  <HeroMark />
+                  <span className="pi-hero-mark" aria-hidden="true">
+                    π
+                  </span>
                   <span className={heroCss.titleGroup}>
-                    <span>今天构建什么？</span>
+                    <span>开始一项任务</span>
+                    <small className="pi-hero-description">与 Pi 一起阅读、编写和运行代码。</small>
                   </span>
                 </div>
               )}
@@ -505,13 +510,27 @@ function App() {
                     title={workspace}
                     onClick={() => openPanel("files")}
                   >
-                    <FolderOpen size={16} />
+                    <FolderOpen size={18} />
                     <span className={heroCss.workspaceLabel}>{workspaceName}</span>
                     <ChevronDown size={12} />
                   </button>
                 </div>
               )}
 
+              <div className="pi-context-strip">
+                <span title={workspace}>
+                  <FolderOpen size={15} aria-hidden="true" />
+                  {workspaceName}
+                </span>
+                <span>
+                  {p.tools.filter((tool) => tool.finished).length}/{p.tools.length} 工具已完成
+                </span>
+                {p.tools.some((tool) => !tool.finished) && (
+                  <span className="pi-active-tool">
+                    正在执行：{p.tools.findLast((tool) => !tool.finished)?.name}
+                  </span>
+                )}
+              </div>
               <div id="error" role="alert">
                 {p.error}
               </div>
@@ -570,7 +589,7 @@ function App() {
                       title="添加附件"
                       onClick={() => files.current?.click()}
                     >
-                      <Plus size={14} />
+                      <Plus size={18} />
                     </button>
                     <div className={inputCss.modes}>
                       <MemoHarnessModeDock inline />

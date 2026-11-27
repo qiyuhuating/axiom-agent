@@ -41,7 +41,7 @@ export default function TerminalView() {
       observer: ResizeObserver | undefined;
     const term = new Terminal({
       fontFamily: "Consolas, monospace",
-      fontSize: 13,
+      fontSize: 14,
       scrollback: 2000,
       theme: terminalTheme(),
       cursorBlink: true,
