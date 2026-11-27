@@ -33,7 +33,7 @@ impl Write for CappedLog {
 fn stop_host(child: &mut Child) {
     // EOF is the desktop host's graceful shutdown signal.
     drop(child.stdin.take());
-    let until = Instant::now() + Duration::from_secs(7);
+    let until = Instant::now() + Duration::from_secs(12);
     while Instant::now() < until {
         if matches!(child.try_wait(), Ok(Some(_))) {
             return;

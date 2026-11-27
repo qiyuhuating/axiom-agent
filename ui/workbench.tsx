@@ -210,27 +210,52 @@ function GitDiff() {
   );
 }
 function Patch({ text }: { text: string }) {
+  const lines = useMemo(() => (text ? text.split("\n") : []), [text]);
+  const [limit, setLimit] = useState(500);
   return (
-    <pre className="git-patch">
-      {text
-        ? text.split("\n").map((line, i) => (
-            <div
-              key={i}
-              className={
-                line.startsWith("+")
-                  ? "patch-add"
-                  : line.startsWith("-")
-                    ? "patch-del"
-                    : line.startsWith("@@")
-                      ? "patch-meta"
-                      : ""
-              }
+    <div>
+      <pre className="git-patch">
+        {lines.length
+          ? lines.slice(0, limit).map((line, i) => (
+              <div
+                key={i}
+                className={
+                  line.startsWith("+")
+                    ? "patch-add"
+                    : line.startsWith("-")
+                      ? "patch-del"
+                      : line.startsWith("@@")
+                        ? "patch-meta"
+                        : ""
+                }
+              >
+                {line || " "}
+              </div>
+            ))
+          : "无更改"}
+      </pre>
+      {lines.length > 500 && (
+        <div className="pi-history-controls">
+          <span>
+            {Math.min(limit, lines.length)} / {lines.length} 行
+          </span>
+          {lines.length > limit && (
+            <button
+              type="button"
+              className="pi-more-button"
+              onClick={() => setLimit((n) => n + 500)}
             >
-              {line || " "}
-            </div>
-          ))
-        : "无更改"}
-    </pre>
+              加载更多差异
+            </button>
+          )}
+          {limit > 500 && (
+            <button type="button" className="pi-more-button" onClick={() => setLimit(500)}>
+              收起
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 function BrowserView() {

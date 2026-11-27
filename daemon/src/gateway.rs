@@ -101,7 +101,7 @@ struct Host(Child);
 impl Drop for Host {
     fn drop(&mut self) {
         drop(self.0.stdin.take());
-        let deadline = Instant::now() + Duration::from_secs(5);
+        let deadline = Instant::now() + Duration::from_secs(10);
         while Instant::now() < deadline {
             if matches!(self.0.try_wait(), Ok(Some(_))) {
                 return;

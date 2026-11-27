@@ -10,6 +10,7 @@ import { createInterface } from "node:readline";
 import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { visibleHistory } from "../src/history-page.mjs";
 
 async function freePort() {
   const server = createServer();
@@ -213,6 +214,23 @@ test("HTTP host: authenticated runtime, restart, extension confirmation and stal
     assert.ok(fork.ok,await fork.clone().text());
     assert.equal((await fork.json()).text,"Active branch");
     assert.notEqual((await get("state")).sessionId,sessionId);
+    const longSession = SessionManager.create(f.workspace, f.sessionDir);
+    for (let i=0;i<180;i++) longSession.appendMessage({role:"user",content:"Persisted history "+i,timestamp:Date.now()+i});
+    assert.ok((await post("action",{action:"switch",value:longSession.getSessionId()})).ok);
+    const full = await get("snapshot");
+    const paged = await get("snapshot?history=page");
+    assert.equal(full.messages.length,180);
+    assert.equal(paged.messages.length,80);
+    assert.equal(paged.history.start,100);
+    assert.equal(paged.history.total,180);
+    const older = await get("history?before="+encodeURIComponent(paged.history.before));
+    assert.equal(older.messages.length,80);
+    assert.equal(older.history.start,20);
+    assert.deepEqual([...older.messages,...paged.messages],visibleHistory(full.messages).slice(20));
+    const pinned = await get("snapshot?history=page&from="+encodeURIComponent(older.history.from));
+    assert.equal(pinned.messages.length,160);
+    assert.ok((await post("action",{action:"switch",value:sessionId})).ok);
+    assert.equal((await fetch(base+"/api/history?before="+encodeURIComponent(paged.history.before))).status,409);
     sse.abort();await eventTask;
   }finally{
     sse?.abort();

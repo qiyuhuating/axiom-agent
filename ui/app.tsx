@@ -54,8 +54,12 @@ import {
   appendDraft,
   changeSession,
   connect,
+  type HistoryWindow,
+  latestHistory,
+  loadEarlierHistory,
   loadOptions,
   type Message,
+  pinHistory,
   refresh,
   removeAttachment,
   run,
@@ -226,12 +230,14 @@ const HistoryMessage = memo(function HistoryMessage({
 });
 const TranscriptMessages = memo(function TranscriptMessages({
   messages,
+  history,
   locked,
   onQuote,
   reading,
   onBrowse,
 }: {
   messages: Message[];
+  history: HistoryWindow | null;
   locked: boolean;
   onQuote: (text: string) => void;
   reading: boolean;
@@ -241,12 +247,13 @@ const TranscriptMessages = memo(function TranscriptMessages({
   // prefix when the reader scrolls back or explicitly reveals earlier data.
   const recentStart = Math.max(0, messages.length - HISTORY_PAGE);
   const [start, setStart] = useState<number | null>(null);
-  const first = start === null ? recentStart : Math.min(start, recentStart);
+  const first = history ? 0 : start === null ? recentStart : Math.min(start, recentStart);
   useLayoutEffect(() => {
     if (reading && start === null) setStart(recentStart);
     else if (start !== null && start > recentStart) setStart(recentStart);
     else if (!reading && start === recentStart) setStart(null);
   }, [reading, start, recentStart]);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
   const anchor = useRef<{ row: Element; top: number; scroll: HTMLElement } | null>(null);
   useLayoutEffect(() => {
     const saved = anchor.current;
@@ -264,27 +271,52 @@ const TranscriptMessages = memo(function TranscriptMessages({
     setStart(next);
   };
 
+  const older = async (event: MouseEvent<HTMLButtonElement>) => {
+    if (!history) {
+      changePage(event, Math.max(0, first - HISTORY_PAGE));
+      return;
+    }
+    if (loadingEarlier) return;
+    const scroll = event.currentTarget.closest<HTMLElement>("#transcript");
+    setLoadingEarlier(true);
+    onBrowse();
+    try {
+      await run(() =>
+        loadEarlierHistory(() => {
+          const row = scroll?.querySelector("[data-history-index]");
+          if (scroll && row) anchor.current = { row, top: row.getBoundingClientRect().top, scroll };
+        }),
+      );
+    } finally {
+      setLoadingEarlier(false);
+    }
+  };
+  const remaining = history?.start ?? first;
+  const total = history?.total ?? messages.length;
   return (
     <>
-      {recentStart > 0 && (
+      {total > HISTORY_PAGE && (
         <div className="pi-history-controls">
           <span>
-            显示最近 {messages.length - first} / {messages.length} 条消息
+            显示最近 {messages.length - first} / {total} 条消息
           </span>
-          {first > 0 && (
+          {remaining > 0 && (
             <button
               type="button"
               className="pi-more-button"
-              onClick={(event) => changePage(event, Math.max(0, first - HISTORY_PAGE))}
+              disabled={loadingEarlier}
+              onClick={(event) => void older(event)}
             >
-              加载更早消息（剩余 {first} 条）
+              {loadingEarlier ? "加载中…" : "加载更早消息（剩余 " + remaining + " 条）"}
             </button>
           )}
-          {first < recentStart && (
+          {(history ? messages.length > HISTORY_PAGE : first < recentStart) && (
             <button
               type="button"
               className="pi-more-button"
-              onClick={(event) => changePage(event, recentStart)}
+              onClick={(event) =>
+                history ? void run(latestHistory) : changePage(event, recentStart)
+              }
             >
               仅显示最近消息
             </button>
@@ -293,9 +325,9 @@ const TranscriptMessages = memo(function TranscriptMessages({
       )}
       {messages.slice(first).map((message, offset) => (
         <HistoryMessage
-          key={first + offset}
+          key={(history?.start ?? first) + offset}
           message={message}
-          index={first + offset}
+          index={(history?.start ?? first) + offset}
           locked={locked}
           onQuote={onQuote}
         />
@@ -327,6 +359,7 @@ function App() {
   const [showJump, setShowJump] = useState(false);
   const browseHistory = useCallback(() => {
     followingTranscript.current = false;
+    pinHistory(true);
     setShowJump(true);
   }, []);
   const sessionId = p.state?.sessionId;
@@ -609,6 +642,7 @@ function App() {
                 const following = scrollHeight - scrollTop - clientHeight <= 64;
                 if (following === followingTranscript.current) return;
                 followingTranscript.current = following;
+                pinHistory(!following);
                 setShowJump(!following);
               }}
             >
@@ -628,6 +662,7 @@ function App() {
               <div className="axiom-chat-column">
                 <TranscriptMessages
                   messages={p.messages}
+                  history={p.history}
                   key={sessionId}
                   locked={locked}
                   onQuote={selectQuote}
@@ -645,6 +680,7 @@ function App() {
                   type="button"
                   onClick={() => {
                     followingTranscript.current = true;
+                    pinHistory(false);
                     setShowJump(false);
                     const element = transcript.current;
                     if (element) element.scrollTop = element.scrollHeight;

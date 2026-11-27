@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { relative, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -7,6 +8,9 @@ import { startDetachedRuntime } from "./platform/index.mjs";
 import { runtimeToken, runtimeUrl } from "./runtime-auth.mjs";
 
 const auth = { Authorization: "Bearer " + runtimeToken };
+const owner = randomUUID();
+let launchedByHost = false;
+let closing = false;
 async function probe() {
   let response;
   try {
@@ -62,7 +66,12 @@ async function connect() {
     const result = await probe();
     if (typeof result === "object") return result;
     if (result === "absent" && !launched) {
-      startDetachedRuntime(root, resolve(config.sessionDir, "runtime.log"));
+      if (closing) throw new HttpError(503, "Workbench is closing");
+      startDetachedRuntime(root, resolve(config.sessionDir, "runtime.log"), {
+        ...process.env,
+        AXIOM_RUNTIME_OWNER: owner,
+      });
+      launchedByHost = true;
       launched = true;
     }
     await new Promise((done) => setTimeout(done, 250));
@@ -70,7 +79,31 @@ async function connect() {
   throw new HttpError(503, "Independent runtime unavailable; inspect runtime.log");
 }
 let starting;
+export async function stopIdleOwnedRuntime() {
+  closing = true;
+  if (config.keepRuntimeOnExit === true) return;
+  if (starting && launchedByHost) await starting;
+  if (!launchedByHost) return;
+  if ((await probe()) === "absent") return;
+  const response = await fetch(runtimeUrl + "/api/runtime-stop-idle", {
+    method: "POST",
+    headers: { ...auth, "Content-Type": "application/json" },
+    body: JSON.stringify({ owner }),
+    redirect: "error",
+    signal: AbortSignal.timeout(2000),
+  });
+  if (!response.ok) throw Error("Idle runtime shutdown rejected");
+  const result = await response.json();
+  if (!result.stopping) return;
+  const deadline = Date.now() + 3500;
+  while (Date.now() < deadline) {
+    if ((await probe()) === "absent") return;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw Error("Owned idle runtime did not stop before desktop exit");
+}
 export function ensureRuntime() {
+  if (closing) throw new HttpError(503, "Workbench is closing");
   starting ??= connect().finally(() => {
     starting = undefined;
   });

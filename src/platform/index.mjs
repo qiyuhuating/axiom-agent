@@ -16,6 +16,6 @@ const posix = {
 // system sandbox is implemented and verified. Never run unsandboxed.
 export const platform = process.platform === "win32" ? windows : posix;
 
-export function startDetachedRuntime(root, logPath) {
-  return launchLogged(process.execPath, [resolve(root, "src/runtime.mjs")], root, logPath);
+export function startDetachedRuntime(root, logPath, env) {
+  return launchLogged(process.execPath, [resolve(root, "src/runtime.mjs")], root, logPath, env);
 }

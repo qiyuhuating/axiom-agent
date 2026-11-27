@@ -174,10 +174,10 @@ await darkModelMenu.waitFor({state:"detached"});
  await page.waitForFunction(()=>document.querySelector('#prompt')?.textContent==='Draft retained on reload');
  await prompt.fill('');
  // Inject a test-only history response, never submit a model prompt or credential.
- const fixtureSnapshot = (patch) => page.route("**/api/snapshot",async route=>{
+ const fixtureSnapshot = (patch) => page.route("**/api/snapshot*",async route=>{
   const response=await route.fetch();
   const snapshot=await response.json();
-  await route.fulfill({response,json:{...snapshot,...patch(snapshot)}});
+  await route.fulfill({response,json:{...snapshot,history:null,historyTools:null,...patch(snapshot)}});
  });
  let draftSession="fixture-draft-a";
  const draftSessions=[{id:"fixture-draft-a",name:"Draft fixture A"},{id:"fixture-draft-b",name:"Draft fixture B"}];
@@ -203,7 +203,7 @@ await darkModelMenu.waitFor({state:"detached"});
  assert.equal(await prompt.textContent(),"First draft");
  await page.getByRole("button",{name:/draft-fixture.png/}).waitFor();
  await page.unroute("**/api/action");
- await page.unroute("**/api/snapshot");
+ await page.unroute("**/api/snapshot*");
  await page.addInitScript(()=>{
   window.EventSource=class extends window.EventSource{
    constructor(url,options){super(url,options);window.axiomTestEvents=this;}
@@ -223,7 +223,7 @@ await darkModelMenu.waitFor({state:"detached"});
  await jump.click();
  await jump.waitFor({state:'detached'});
  assert.ok(await page.locator('#transcript').evaluate(element=>element.scrollHeight-element.scrollTop-element.clientHeight<2));
- await page.unroute("**/api/snapshot");
+ await page.unroute("**/api/snapshot*");
  await fixtureSnapshot(()=>({messages:[{role:"assistant",content:[{type:"text",text:"Fixture quote to reference"}]},{role:"user",content:[{type:"text",text:"fixture ghp_"+"A".repeat(36)}]},{role:"toolResult",toolCallId:"delivery-fixture",toolName:"present_files",content:[{type:"text",text:"Presented to user: axiom-fixture.txt"}],details:{kind:"axiom-deliverables-v1",files:[{path:"axiom-fixture.txt",size:20}]}}]}));
  await page.reload();
  await page.locator("#transcript .axiom-message.user").waitFor();
@@ -247,7 +247,7 @@ await darkModelMenu.waitFor({state:"detached"});
  await page.getByRole("button",{name:"预览 axiom-fixture.txt"}).waitFor();
  await page.getByRole("button",{name:"预览 axiom-fixture.txt"}).click();
  await page.locator(".inspector").waitFor();
- await page.unroute("**/api/snapshot");await page.reload();
+ await page.unroute("**/api/snapshot*");await page.reload();
  // Browser-only recovery fixture: no new model run or permission request.
  const request={kind:"questions",questions:[{id:"q1",question:"Fixture choice",options:[{label:"Pick A"}]},{id:"q2",question:"Fixture custom"}]};
  const dialog={id:"fixture-question-draft",method:"editor",title:"Axiom structured interaction v1",prefill:JSON.stringify(request)};
@@ -265,14 +265,14 @@ await darkModelMenu.waitFor({state:"detached"});
  await page.getByText("Fixture custom",{exact:true}).waitFor({state:"detached"});
  assert.deepEqual(JSON.parse(response.value).answers.map(a=>({id:a.id,selected:a.selected,custom:a.custom})),[{id:"q1",selected:["Pick A"],custom:""},{id:"q2",selected:[],custom:"draft survives reload"}]);
  assert.equal(await page.evaluate(()=>sessionStorage.getItem("axiom.question-draft.v1:fixture-question-draft")),null);
- await page.unroute("**/api/snapshot");await page.unroute("**/api/ui-response");
+ await page.unroute("**/api/snapshot*");await page.unroute("**/api/ui-response");
  await page.reload();
  // A failed authoritative snapshot must never expose a false-ready composer.
- await page.route("**/api/snapshot",route=>route.fulfill({status:503,contentType:"text/plain",body:"Unavailable"}));
+ await page.route("**/api/snapshot*",route=>route.fulfill({status:503,contentType:"text/plain",body:"Unavailable"}));
  await page.reload();
  await page.getByText("同步失败",{exact:true}).waitFor();
  assert.equal(await page.locator("#send").isDisabled(),true);
- await page.unroute("**/api/snapshot");
+ await page.unroute("**/api/snapshot*");
  await page.getByRole("button",{name:"重新同步"}).click();
  await page.waitForFunction(()=>document.querySelector("#status")?.textContent==="就绪");
  assert.equal(await page.locator("#send").isDisabled(),false);
@@ -331,7 +331,7 @@ await darkModelMenu.waitFor({state:"detached"});
  ];
  let selectedSession=identities[0].id;
  const sessionState=()=>({...baseState,sessionId:selectedSession});
- await page.route("**/api/snapshot",route=>route.fulfill({json:{
+ await page.route("**/api/snapshot*",route=>route.fulfill({json:{
   ...baseSnapshot,state:sessionState(),sessions:identities,messages:[],dialogs:[],
  }}));
  await page.route("**/api/state",route=>route.fulfill({json:sessionState()}));
@@ -366,7 +366,7 @@ await darkModelMenu.waitFor({state:"detached"});
  await page.locator(".inspector [data-dockkit-tab]").filter({hasText:"终端"}).first().waitFor();
  await page.unroute("**/api/action");
  await page.unroute("**/api/state");
- await page.unroute("**/api/snapshot");
+ await page.unroute("**/api/snapshot*");
  await page.reload();
  await page.waitForFunction(()=>document.querySelector("#status")?.textContent==="就绪"); // An unsaved CodeMirror draft must block a Pi session change until confirmed.
  await page.locator("#sidebar-panels").getByRole("button",{name:"文件",exact:true}).click();

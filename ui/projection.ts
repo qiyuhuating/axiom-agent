@@ -28,6 +28,7 @@ export type Tool = {
   started?: number;
   ended?: number;
   details?: unknown;
+  detailDeferred?: boolean;
   turn?: number;
 };
 type Session = { id: string; name?: string; firstMessage?: string };
@@ -77,7 +78,15 @@ type HarnessState = {
     evidence?: string;
   };
 };
+export type HistoryWindow = {
+  sessionId: string;
+  start: number;
+  total: number;
+  from: string;
+  before: string | null;
+};
 type Snapshot = {
+  history: HistoryWindow | null;
   harness: HarnessState | null;
   jobs: JobState | null;
   state: State | null;
@@ -101,6 +110,7 @@ type Snapshot = {
   notice: string;
 };
 let snapshot: Snapshot = {
+  history: null,
   harness: null,
   jobs: null,
   state: null,
@@ -127,6 +137,7 @@ function selectShell(s: Snapshot) {
   return {
     state: s.state,
     messages: s.messages,
+    history: s.history,
     tools: s.tools,
     models: s.models,
     levels: s.levels,
@@ -247,6 +258,7 @@ function mergeTool(e: Partial<Tool> & { id: string }, old?: Tool): Tool {
     ended: e.ended ?? old?.ended,
     details: e.details ?? old?.details,
     turn: old?.turn ?? e.turn,
+    detailDeferred: e.detailDeferred ?? (e.result !== undefined ? false : old?.detailDeferred),
   };
 }
 function upsertTool(tools: Tool[], e: Partial<Tool> & { id: string }): Tool[] {
@@ -290,13 +302,21 @@ export function projectHistory(messages: Message[]) {
   };
 }
 let generation = 0;
+let historyPinned = false;
+export function pinHistory(pinned: boolean) {
+  historyPinned = pinned;
+}
 let pendingEvents: any[] | null = null;
 export async function refresh() {
   const id = ++generation;
   pendingEvents = [];
   update({ syncing: true });
   try {
-    const { state, messages, sessions, dialogs, harness } = await api("snapshot");
+    const params = new URLSearchParams({ history: "page" });
+    if (historyPinned && snapshot.history) params.set("from", snapshot.history.from);
+    const { state, messages, sessions, dialogs, harness, history, historyTools } = await api(
+      "snapshot?" + params,
+    );
     if (id !== generation) return;
     const switched = snapshot.state?.sessionId !== state.sessionId;
     try {
@@ -311,7 +331,15 @@ export async function refresh() {
     }
     const buffered = pendingEvents;
     pendingEvents = null;
-    const projected = projectHistory(messages);
+    if (switched) historyPinned = false;
+    const projected =
+      history && historyTools
+        ? {
+            messages: messages as Message[],
+            tools: historyTools.tools as Tool[],
+            turn: historyTools.turn as number,
+          }
+        : projectHistory(messages);
     if (!switched) {
       const previousTools = new Map(snapshot.tools.map((tool) => [tool.id, tool]));
       projected.tools = projected.tools.map((t) => {
@@ -323,6 +351,7 @@ export async function refresh() {
       state,
       harness: harness.sessionId === state.sessionId ? harness : null,
       ...projected,
+      history: history ?? null,
       ...(switched ? composerFor(state.sessionId) : {}),
       sessions,
       dialogs,
@@ -363,6 +392,35 @@ export async function refresh() {
       update({ syncing: false });
     }
   }
+}
+export async function loadEarlierHistory(beforeCommit: () => void) {
+  const history = snapshot.history;
+  if (!history?.before || snapshot.syncing || snapshot.changing) return;
+  const revision = generation;
+  const page: { messages: Message[]; history: HistoryWindow } = await api(
+    "history?before=" + encodeURIComponent(history.before),
+  );
+  if (
+    revision !== generation ||
+    snapshot.history?.from !== history.from ||
+    snapshot.state?.sessionId !== history.sessionId
+  )
+    return;
+  if (
+    page.history.sessionId !== history.sessionId ||
+    page.history.start + page.messages.length !== history.start
+  )
+    throw Error("History page boundary changed");
+  beforeCommit();
+  historyPinned = true;
+  update({
+    messages: [...page.messages, ...snapshot.messages],
+    history: { ...page.history, total: snapshot.history.total },
+  });
+}
+export async function latestHistory() {
+  historyPinned = false;
+  await refresh();
 }
 let jobCursor = "";
 let jobRequest: { key: string; pending: Promise<JobState> } | undefined;
@@ -483,6 +541,9 @@ function handleEvent(e: any) {
       if (["user", "assistant"].includes(e.message.role))
         update({
           messages: [...snapshot.messages, e.message],
+          history: snapshot.history
+            ? { ...snapshot.history, total: snapshot.history.total + 1 }
+            : null,
           turn: snapshot.turn + (e.message.role === "user" ? 1 : 0),
           stream: e.message.role === "assistant" ? "" : snapshot.stream,
           ...(e.message.errorMessage ? { error: e.message.errorMessage } : {}),

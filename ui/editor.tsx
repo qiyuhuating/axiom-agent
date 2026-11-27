@@ -4,7 +4,7 @@ import { json as jsonLanguage } from "@codemirror/lang-json";
 import { markdown as markdownLanguage } from "@codemirror/lang-markdown";
 import { python } from "@codemirror/lang-python";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
-import { Compartment, EditorState } from "@codemirror/state";
+import { Compartment, EditorState, Text } from "@codemirror/state";
 import {
   drawSelection,
   EditorView,
@@ -87,14 +87,17 @@ export default function Editor({ path }: { path: string }) {
     [text, setText] = useState("");
   const container = useRef<HTMLDivElement>(null),
     view = useRef<EditorView | null>(null),
-    latest = useRef(""),
-    original = useRef("");
+    latest = useRef(Text.empty),
+    original = useRef(Text.empty),
+    separator = useRef("\n");
+  const serialize = (doc: Text) => doc.sliceString(0, doc.length, separator.current);
   const load = useCallback(async () => {
     try {
       const f = await api("file?path=" + encodeURIComponent(path));
       setFile(f);
-      latest.current = f.text || "";
-      original.current = f.text || "";
+      separator.current = f.text?.includes("\r\n") ? "\r\n" : "\n";
+      latest.current = Text.of((f.text || "").split(separator.current));
+      original.current = latest.current;
       setText(f.text || "");
       setChanged(false);
       dirtyTabs.delete(path);
@@ -119,7 +122,7 @@ export default function Editor({ path }: { path: string }) {
       state: EditorState.create({
         doc: current,
         extensions: [
-          EditorState.lineSeparator.of(original.current.includes("\r\n") ? "\r\n" : "\n"),
+          EditorState.lineSeparator.of(separator.current),
           lineNumbers(),
           drawSelection(),
           highlightActiveLine(),
@@ -130,8 +133,8 @@ export default function Editor({ path }: { path: string }) {
           appearance.of(editorTheme()),
           EditorView.updateListener.of((u) => {
             if (u.docChanged) {
-              latest.current = u.state.sliceDoc();
-              const delta = latest.current !== original.current;
+              latest.current = u.state.doc;
+              const delta = !latest.current.eq(original.current);
               setChanged(delta);
               if (delta) dirtyTabs.add(path);
               else dirtyTabs.delete(path);
@@ -151,15 +154,16 @@ export default function Editor({ path }: { path: string }) {
   }, [version, mode, path, file?.kind]);
   async function save() {
     try {
-      const submitted = latest.current;
+      const submittedDoc = latest.current;
+      const submitted = serialize(submittedDoc);
       const r = await api("file-save", {
         path,
         text: submitted,
         revision: file.revision,
       });
-      original.current = submitted;
+      original.current = submittedDoc;
       setFile({ ...file, text: submitted, revision: r.revision });
-      const delta = latest.current !== submitted;
+      const delta = !latest.current.eq(submittedDoc);
       setChanged(delta);
       if (delta) dirtyTabs.add(path);
       else dirtyTabs.delete(path);
@@ -169,7 +173,7 @@ export default function Editor({ path }: { path: string }) {
     }
   }
   function changeMode(next: string) {
-    setText(latest.current);
+    setText(serialize(latest.current));
     setMode(next);
   }
   const isMd = /\.md$/i.test(path);
@@ -216,11 +220,11 @@ export default function Editor({ path }: { path: string }) {
           <div ref={container} className="wb-editor" />
         ) : mode === "diff" ? (
           <div className="wb-scroll">
-            {text === original.current ? (
+            {text === serialize(original.current) ? (
               <p className="wb-muted">没有更改</p>
             ) : (
               <DiffBlock
-                diffs={[{ path, oldText: original.current, newText: text }]}
+                diffs={[{ path, oldText: serialize(original.current), newText: text }]}
                 labels={diffLabels}
               />
             )}

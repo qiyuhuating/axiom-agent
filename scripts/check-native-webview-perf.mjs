@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { pathToFileURL } from "node:url";
+import { historyPage, historyTools } from "../src/history-page.mjs";
 
 const [port, baseUrl] = process.argv.slice(2);
 assert.match(port ?? "", /^\d+$/);
@@ -15,12 +16,12 @@ const messages = Array.from({ length: records }, (_, index) => ({
   role: index % 2 ? "assistant" : "user",
   content: [{ type: "text", text: "Native frame fixture " + index + "\n" + "A representative history line.\n".repeat(5) }],
 }));
-const fixture = "**/api/snapshot";
+const fixture = "**/api/snapshot*";
 try {
   await page.route(fixture, async route => {
     const response = await route.fetch();
     const snapshot = await response.json();
-    await route.fulfill({ response, json: { ...snapshot, messages } });
+    await route.fulfill({ response, json: { ...snapshot, ...historyPage(messages, snapshot.state.sessionId), historyTools: historyTools(messages) } });
   });
   await page.reload();
   await page.getByText("Native frame fixture 1999", { exact: false }).waitFor();

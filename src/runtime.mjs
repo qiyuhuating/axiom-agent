@@ -4,13 +4,20 @@ import { createRuntimeContext } from "./cordis-runtime.mjs";
 import { body, healthStats, json, requestError, requestUrl } from "./http.mjs";
 import { runtimePort, runtimeToken } from "./runtime-auth.mjs";
 
+const owner = process.env.AXIOM_RUNTIME_OWNER;
+delete process.env.AXIOM_RUNTIME_OWNER;
 let jobs, term, ctx;
+let draining = false;
+let mutations = 0;
 const server = createServer(async (req, res) => {
   const auth = req.headers.authorization;
   const token = auth?.startsWith("Bearer ") ? auth.slice(7) : undefined;
   if (req.headers.host !== "127.0.0.1:" + runtimePort)
     return json(res, { error: "Invalid host" }, 403);
   if (!ctx) return json(res, { error: "Initializing" }, 503);
+  const mutation = req.method === "POST" && req.url !== "/api/runtime-stop-idle";
+  if (draining) return json(res, { error: "Runtime is stopping" }, 503);
+  if (mutation) mutations++;
   try {
     const url = requestUrl(req);
     const path = url.pathname;
@@ -77,7 +84,26 @@ const server = createServer(async (req, res) => {
       }
     }
     if (req.method === "POST") {
-      const { action, value } = await body(req);
+      const payload = await body(req);
+      if (path === "/api/runtime-stop-idle") {
+        if (draining || !owner || payload.owner !== owner || mutations || jobs.hasActiveWork())
+          return json(res, { stopping: false });
+        draining = true;
+        try {
+          const terminals = await ctx.axiomTerminal.listAsync();
+          if (jobs.hasActiveWork() || terminals.some((t) => t.exit == null && !t.interrupted)) {
+            draining = false;
+            return json(res, { stopping: false });
+          }
+          json(res, { stopping: true });
+          void shutdown();
+          return;
+        } catch (error) {
+          draining = false;
+          throw error;
+        }
+      }
+      const { action, value } = payload;
       if (path === "/api/job-action") return json(res, await ctx.axiomJobs.action(action, value));
       if (path === "/api/terminal-action")
         return json(res, await ctx.axiomTerminal.actionAsync(action, value));
@@ -90,6 +116,8 @@ const server = createServer(async (req, res) => {
     json(res, { error: "Not found" }, 404);
   } catch (e) {
     requestError("runtime", req, res, e);
+  } finally {
+    if (mutation) mutations--;
   }
 });
 server.on("error", (e) => {

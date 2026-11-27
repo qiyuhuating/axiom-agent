@@ -8,7 +8,7 @@ import { Agent } from "./agent.mjs";
 import { config, root } from "./config.mjs";
 import { body, HttpError, healthStats, json, requestError, requestUrl } from "./http.mjs";
 import { builtinPrompt, setBuiltinPrompt } from "./prompt-store.mjs";
-import { ensureRuntime, proxyRuntime } from "./runtime-client.mjs";
+import { ensureRuntime, proxyRuntime, stopIdleOwnedRuntime } from "./runtime-client.mjs";
 import {
   inventory,
   permission,
@@ -71,7 +71,27 @@ const server = createServer(async (req, res) => {
         return res.end(data);
       }
       if (path === "/api/health") return json(res, { ok: true, ...healthStats() });
-      if (path === "/api/snapshot") return json(res, await agent.snapshot());
+      if (path === "/api/snapshot")
+        return json(
+          res,
+          await agent.snapshot(
+            url.searchParams.get("history") === "page"
+              ? { from: url.searchParams.get("from") }
+              : undefined,
+          ),
+        );
+      if (path === "/api/tool-history") {
+        const session = url.searchParams.get("session"),
+          id = url.searchParams.get("id");
+        if (!session || !id || session.length > 256 || id.length > 512)
+          throw new HttpError(400, "Tool history identity required");
+        return json(res, await agent.toolHistory(session, id));
+      }
+      if (path === "/api/history") {
+        const before = url.searchParams.get("before");
+        if (!before) throw new HttpError(400, "History cursor required");
+        return json(res, await agent.olderHistory(before));
+      }
       if (path === "/api/state") return json(res, await agent.state());
       if (path === "/api/harness") return json(res, await agent.harnessState());
       if (path === "/api/messages") return json(res, await agent.messages());
@@ -223,10 +243,19 @@ server.listen(config.port, "127.0.0.1", () => {
   console.log("Axiom Agent http://127.0.0.1:" + config.port);
   void ensureRuntime().catch((e) => console.error(e.message));
 });
+let stopping = false;
 async function shutdown() {
-  await agent.close();
+  if (stopping) return;
+  stopping = true;
   server.close();
-  process.exit(0);
+  server.closeAllConnections();
+  process.stdin.pause();
+  try {
+    await agent.close();
+  } finally {
+    if (process.env.AXIOM_DESKTOP === "1")
+      await stopIdleOwnedRuntime().catch((error) => console.error("Runtime exit:", error.message));
+  }
 }
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);

@@ -3,6 +3,8 @@ import { dirname, resolve } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { config, root } from "./config.mjs";
 import { projectHarness, projectSessionHistory } from "./harness-state.mjs";
+import { historyPage, historyTools } from "./history-page.mjs";
+import { HttpError } from "./http.mjs";
 import { decodeRequest, validateAnswer } from "./interaction-protocol.mjs";
 import { PiClient } from "./pi-client.mjs";
 import { builtinPromptPath } from "./prompt-store.mjs";
@@ -150,7 +152,7 @@ export class Agent {
       workspace: config.workspace,
     };
   }
-  async snapshot() {
+  async snapshot(page) {
     await this.start();
     const client = this.#client;
     const revision = this.#sessionRevision;
@@ -166,11 +168,42 @@ export class Agent {
     this.#sessionId = state.sessionId;
     return {
       state: this.#projectState(state),
-      messages: messages.filter((m) => m.role !== "system"),
+      ...(page
+        ? {
+            ...historyPage(messages, state.sessionId, page),
+            historyTools: historyTools(messages, { summaries: true }),
+          }
+        : { messages: messages.filter((m) => m.role !== "system") }),
       sessions,
       dialogs: this.pendingDialogs(),
       harness: { sessionId: state.sessionId, ...projectHarness(tree) },
     };
+  }
+  async toolHistory(sessionId, id) {
+    await this.start();
+    const client = this.#client;
+    const revision = this.#sessionRevision;
+    if (revision % 2) throw Error("Session change in progress");
+    const [state, messages] = await Promise.all([client.getState(), client.getMessages()]);
+    if (
+      client !== this.#client ||
+      revision !== this.#sessionRevision ||
+      sessionId !== state.sessionId
+    )
+      throw new HttpError(409, "Session changed while reading tool history");
+    const tool = historyTools(messages, { only: id }).tools[0];
+    if (!tool) throw new HttpError(404, "Tool call not found");
+    return { args: tool.args, result: tool.result };
+  }
+  async olderHistory(before) {
+    await this.start();
+    const client = this.#client;
+    const revision = this.#sessionRevision;
+    if (revision % 2) throw Error("Session change in progress");
+    const [state, messages] = await Promise.all([client.getState(), client.getMessages()]);
+    if (client !== this.#client || revision !== this.#sessionRevision)
+      throw Error("Session changed while reading history");
+    return historyPage(messages, state.sessionId, { before });
   }
   async harnessState() {
     await this.start();

@@ -343,17 +343,68 @@ function toolStatus(tool: Tool, busy: boolean) {
       : "pending";
 }
 const toolStatusLabel = { failed: "失败", done: "完成", running: "运行中", pending: "未记录结果" };
+function ToolPayload({ label, value }: { label: string; value: unknown }) {
+  const [full, setFull] = useState(false);
+  const text = useMemo(
+    () =>
+      maskCredentials(
+        JSON.stringify(value, (_k, v) => (typeof v === "string" ? maskCredentials(v) : v), 2) ?? "",
+      ),
+    [value],
+  );
+  const large = text.length > 16384;
+  return (
+    <>
+      <h4>{label}</h4>
+      <pre>{(full ? text : text.slice(0, 16384)) || "无记录"}</pre>
+      {large && (
+        <button className="pi-more-button" type="button" onClick={() => setFull((v) => !v)}>
+          {full ? "收起完整内容" : "显示完整内容（" + text.length.toLocaleString() + " 字符）"}
+        </button>
+      )}
+    </>
+  );
+}
 function ToolDetails({ tool }: { tool: Tool }) {
-  const show = (value: unknown) =>
-    maskCredentials(
-      JSON.stringify(value, (_k, v) => (typeof v === "string" ? maskCredentials(v) : v), 2) ?? "",
-    );
+  const sessionId = useProjectionField("state")?.sessionId;
+  const [loaded, setLoaded] = useState<{ args?: unknown; result?: unknown } | null>(null);
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: attempt explicitly retries the request.
+  useEffect(() => {
+    if (!tool.detailDeferred || !sessionId) return;
+    let active = true;
+    setLoaded(null);
+    setError("");
+    void api("tool-history?" + new URLSearchParams({ session: sessionId, id: tool.id }))
+      .then((data) => {
+        if (active) setLoaded(data);
+      })
+      .catch((error) => {
+        if (active) setError(String(error.message ?? error));
+      });
+    return () => {
+      active = false;
+    };
+  }, [tool.detailDeferred, tool.id, sessionId, attempt]);
+  const value = tool.detailDeferred ? loaded : tool;
   return (
     <div className="pi-tool-detail">
-      <h4>调用参数</h4>
-      <pre>{show(tool.args) || "无记录"}</pre>
-      <h4>返回结果</h4>
-      <pre>{show(tool.result) || "无记录"}</pre>
+      {error ? (
+        <p role="alert">
+          {error}{" "}
+          <button type="button" onClick={() => setAttempt((n) => n + 1)}>
+            重试
+          </button>
+        </p>
+      ) : value ? (
+        <>
+          <ToolPayload label="调用参数" value={value.args} />
+          <ToolPayload label="返回结果" value={value.result} />
+        </>
+      ) : (
+        <p role="status">正在读取历史工具详情…</p>
+      )}
     </div>
   );
 }

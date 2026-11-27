@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url";
 import { once } from "node:events";
 import { createInterface } from "node:readline";
 import { build } from "esbuild";
+import { historyPage, historyTools } from "../src/history-page.mjs";
 
 const modulePath = process.env.AXIOM_TEST_PLAYWRIGHT_MODULE;
 assert.ok(modulePath, "Set AXIOM_TEST_PLAYWRIGHT_MODULE to an installed Playwright module");
@@ -19,7 +20,7 @@ await once(portServer, "listening");
 const runtimePort = portServer.address().port;
 await new Promise((resolve) => portServer.close(resolve));
 await mkdir(join(tmp, "workspace", "src"), { recursive: true });
-await writeFile(join(tmp, "workspace", "src", "fixture.ts"), "export const answer = 42;\n");
+await writeFile(join(tmp, "workspace", "src", "fixture.ts"), "export const answer = 42;\r\n");
 await writeFile(join(tmp, "workspace", "readme.md"), "# Fixture\n");
 const config = join(tmp, "config.json");
 await writeFile(config, JSON.stringify({
@@ -223,6 +224,19 @@ try {
         return keyword && getComputedStyle(keyword).color;
       });
       assert.equal(keywordColor, "rgb(198, 164, 242)");
+      const editorContent=page.locator(".inspector .cm-content");
+      await editorContent.click();
+      await page.keyboard.press("Control+End");
+      await page.keyboard.insertText("export const next = 43;");
+      const saveButton=page.locator(".inspector").getByRole("button",{name:"保存",exact:true});
+      await saveButton.waitFor();
+      assert.equal(await saveButton.isEnabled(),true);
+      await page.keyboard.press("Control+z");
+      await page.waitForFunction(()=>Array.from(document.querySelectorAll(".inspector button")).some(b=>b.textContent.trim()==="保存"&&b.disabled));
+      await page.keyboard.press("Control+y");
+      await saveButton.click();
+      await page.waitForFunction(()=>Array.from(document.querySelectorAll(".inspector button")).some(b=>b.textContent.trim()==="保存"&&b.disabled));
+      assert.equal(await readFile(join(tmp,"workspace","src","fixture.ts"),"utf8"),"export const answer = 42;\r\nexport const next = 43;");
       await page.locator("#sidebar-panels").getByRole("button", { name: "文件", exact: true }).click();
       await directory.waitFor();
       assert.equal(directoryRequests, 1);
@@ -242,12 +256,19 @@ try {
         toolName: i % 2 ? "read" : "write", isError: i % 10 === 0,
         content: [{ type: "text", text: "Tool fixture result " + i }]
       }));
-      await page.route("**/api/snapshot", async route => {
+      await page.route("**/api/snapshot*", async route => {
         const response = await route.fetch();
         const snapshot = await response.json();
-        await route.fulfill({ response, json: { ...snapshot, messages: [...history, ...toolResults] } });
+        const raw = [...history, ...toolResults];
+        const from = new URL(route.request().url()).searchParams.get("from");
+        await route.fulfill({ response, json: { ...snapshot, ...historyPage(raw, snapshot.state.sessionId, { from }), historyTools: historyTools(raw, { summaries: true }) } });
       });
       await page.reload();
+      await page.route("**/api/history?*", async route => {
+        const before = new URL(route.request().url()).searchParams.get("before");
+        const sessionId = JSON.parse(Buffer.from(before, "base64url").toString()).sessionId;
+        await route.fulfill({ json: historyPage(history, sessionId, { before }) });
+      });
       await page.getByText("History fixture 1999", { exact: false }).waitFor();
       const articles = page.locator("#transcript [data-history-index]");
       assert.equal(await articles.count(), 80);
@@ -259,10 +280,11 @@ try {
       const oldAnchor = page.locator('[data-history-index="1920"]');
       const oldTop = await oldAnchor.evaluate(el => el.getBoundingClientRect().top);
       await loadOlder.click();
-      assert.equal(await articles.count(), 160);
+      await page.waitForFunction(() => document.querySelectorAll("#transcript [data-history-index]").length === 160);
       const newTop = await oldAnchor.evaluate(el => el.getBoundingClientRect().top);
       assert.ok(Math.abs(oldTop - newTop) <= 3, JSON.stringify({ oldTop, newTop }));
       await page.getByRole("button", { name: "仅显示最近消息" }).click();
+      await page.waitForFunction(() => document.querySelectorAll("#transcript [data-history-index]").length === 80);
       assert.equal(await articles.count(), 80);
       await page.getByRole("button", { name: "回到最新消息" }).click();
       await page.waitForFunction(() => {
@@ -277,7 +299,17 @@ try {
       assert.equal(await ledger.locator('[data-kind="tool"]').count(), 100);
       await ledger.getByRole("button", { name: "失败 50" }).click();
       assert.equal(await ledger.locator('[data-kind="tool"]').count(), 50);
+      let detailRequests=0;
+      await page.route("**/api/tool-history?*", async route => {
+        detailRequests++;
+        const id = new URL(route.request().url()).searchParams.get("id");
+        const detail=historyTools(toolResults,{only:id}).tools[0];
+        await route.fulfill({ json:{args:detail.args,result:detail.result} });
+      });
+      assert.equal(detailRequests,0);
       await ledger.locator(".pi-tool-row").first().click();
+      await ledger.getByText(/Tool fixture result 490/).waitFor();
+      assert.equal(detailRequests,1);
       assert.match(await ledger.locator(".pi-tool-detail").innerText(), /Tool fixture result 490/);
       await ledger.getByRole("searchbox", { name: "筛选工具名称" }).fill("read");
       assert.equal(await ledger.locator('[data-kind="tool"]').count(), 0);
@@ -293,8 +325,18 @@ try {
       await page.locator("#sidebar-panels").getByRole("button", { name: "执行轨迹", exact: true }).click();
       await ledger.waitFor();
       assert.equal(await ledger.locator('[data-kind="tool"]').count(), 100);
-      console.log("PI_TRACE_PASS", JSON.stringify({ records: 500, initialMounted: 100, failed: 50, expandedMounted: 200, hiddenUnmounted: true }));
-      await page.unroute("**/api/snapshot");
+      await page.route("**/api/diff",route=>route.fulfill({json:{available:true,status:" M fixture.ts",unstaged:Array.from({length:1500},(_,i)=>"+line "+i).join("\n"),staged:""}}));
+      await page.locator("#sidebar-panels").getByRole("button",{name:"Git Diff",exact:true}).click();
+      const patch=page.locator(".inspector .git-patch").first();
+      await patch.waitFor();
+      assert.equal(await patch.locator("div").count(),500);
+      await page.locator(".inspector").getByRole("button",{name:"加载更多差异"}).click();
+      assert.equal(await patch.locator("div").count(),1000);
+      await page.unroute("**/api/diff");
+      console.log("PI_TRACE_PASS", JSON.stringify({ records: 500, initialMounted: 100, failed: 50, expandedMounted: 200, hiddenUnmounted: true, detailRequests, diffInitial:500 }));
+      await page.unroute("**/api/snapshot*");
+      await page.unroute("**/api/history?*");
+      await page.unroute("**/api/tool-history?*");
 
       // Tab from model search must move focus, not change the selected model.
       const fixtureModels = Array.from({ length: 5 }, (_, i) => ({ provider: "fixture", id: "model-" + i }));

@@ -284,6 +284,9 @@ export function jobPage(cursor, limit, session) {
 export function jobDetail(id) {
   return activeJobs.get(id) ?? store.job(id);
 }
+export function hasActiveWork() {
+  return activeJobs.size > 0 || workers.size > 0 || timers.size > 0;
+}
 export function jobState() {
   const snapshot = store.state;
   snapshot.jobs = snapshot.jobs.map((j) => activeJobs.get(j.id) ?? j);
