@@ -46,6 +46,31 @@ try {
         throw "Installed desktop did not publish its WebView2 debug target. Host URL: $baseUrl. Targets: $($targets.url -join ', ')"
     }
 
+    # Check the actual HWND, not only the executable manifest or browser DPR.
+    Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class AxiomDpi {
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetWindowDpiAwarenessContext(IntPtr hwnd);
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool AreDpiAwarenessContextsEqual(IntPtr first, IntPtr second);
+}
+"@
+    $windowDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    do {
+        $desktop.Refresh()
+        $hwnd = $desktop.MainWindowHandle
+        if ($hwnd -ne [IntPtr]::Zero) { break }
+        Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $windowDeadline)
+    if ($hwnd -eq [IntPtr]::Zero -or
+        ![AxiomDpi]::AreDpiAwarenessContextsEqual([AxiomDpi]::GetWindowDpiAwarenessContext($hwnd), [IntPtr](-4))) {
+        throw 'Installed desktop window is not PerMonitorV2 DPI-aware'
+    }
+    Write-Host 'Native desktop PerMonitorV2 DPI awareness confirmed'
+
     & node (Join-Path $PSScriptRoot 'check-installed-terminal.mjs') $debugPort $baseUrl
     if ($LASTEXITCODE -ne 0) { throw 'Installed WebView2 terminal smoke test failed' }
 

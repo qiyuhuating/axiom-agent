@@ -701,5 +701,22 @@ body.sidebar-collapsed .pi-shell #new {padding:0;border:0;}
 .pi-shell .pi-header-row {flex:1;min-width:0;}
 .pi-shell .sidebar .brand-name {font-size:17px;letter-spacing:0;}
 .pi-shell .pi-conversation {position:relative;height:100%;}
-.pi-shell .axiom-conversation-body[data-phase='hero'] .composer {max-width:948px;}
 .pi-shell .cm-editor {font-size:14px;}
+
+/* Layout is measured in CSS pixels. WebView2 owns rasterization at the
+   monitor's device pixel ratio; never multiply the layout by DPR. */
+.pi-shell .axiom-conversation-body {
+  container-type:inline-size;
+  --pi-reading-width:clamp(900px, 78cqi, 1120px);
+}
+.pi-shell .axiom-chat-column {
+  width:min(100%, var(--pi-reading-width));
+  max-width:var(--pi-reading-width);
+}
+.pi-shell .axiom-conversation-body .composer,
+.pi-shell main:has(.welcome) .axiom-conversation-body[data-phase='hero'] .composer {
+  max-width:calc(var(--pi-reading-width) + 48px);
+}
+.pi-shell .axiom-conversation-body .composer form {
+  --dsh-composer-card-max-width:var(--pi-reading-width);
+}

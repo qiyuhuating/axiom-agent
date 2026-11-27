@@ -164,10 +164,28 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     };
     let url = format!("http://127.0.0.1:{port}/").parse::<tauri::Url>()?;
     let origin = url.origin();
+    // Tauri's window builder takes logical pixels, while monitor work areas
+    // are physical pixels. Convert exactly once using the monitor DPI.
+    let (width, height) = app
+        .primary_monitor()
+        .ok()
+        .flatten()
+        .map(|monitor| {
+            let work = monitor
+                .work_area()
+                .size
+                .to_logical::<f64>(monitor.scale_factor());
+            (
+                (work.width * 0.85).min(1920.0),
+                (work.height * 0.85).min(1200.0),
+            )
+        })
+        .unwrap_or((1440.0, 900.0));
     let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
         .title("Axiom Agent")
-        .inner_size(1440.0, 900.0)
-        .min_inner_size(900.0, 580.0)
+        .inner_size(width, height)
+        .min_inner_size(width.min(900.0), height.min(580.0))
+        .center()
         .on_navigation(move |url| url.origin() == origin)
         .build();
     if let Err(error) = window {

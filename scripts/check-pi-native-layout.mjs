@@ -38,9 +38,11 @@ try {
     host.once("exit", (code) => { clearTimeout(timer); reject(Error("Host exited: " + code)); });
   });
   browser = await chromium.launch({ executablePath: process.env.AXIOM_TEST_CHROME || undefined, headless: true });
-  for (const [width, height, deviceScaleFactor] of [
-    [1440, 900, 1], [1280, 800, 1.25], [960, 640, 1.5], [720, 860, 2], [1920, 1080, 2],
-  ]) {
+  const displays = [
+    [1440, 900, 1], [1280, 800, 1.25], [960, 640, 1.5], [720, 860, 2],
+    ...[1, 1.25, 1.5, 2].flatMap(dpr => [[Math.round(2560 / dpr), Math.round(1440 / dpr), dpr], [Math.round(3840 / dpr), Math.round(2160 / dpr), dpr]]),
+  ];
+  for (const [width, height, deviceScaleFactor] of displays) {
     const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor, colorScheme: "light" });
     const page = await context.newPage();
     const errors = [];
@@ -59,6 +61,15 @@ try {
       };
     });
     assert.equal(geometry.dpr, deviceScaleFactor);
+    assert.equal(geometry.width, width);
+    assert.equal(geometry.height, height);
+    // PNG IHDR measures actual raster pixels, not only CSS viewport dimensions.
+    const png = await page.screenshot({ scale: "device" });
+    const pixelWidth = png.readUInt32BE(16);
+    const pixelHeight = png.readUInt32BE(20);
+    assert.ok(Math.abs(pixelWidth - width * deviceScaleFactor) <= 1);
+    assert.ok(Math.abs(pixelHeight - height * deviceScaleFactor) <= 1);
+    if (width >= 2560) assert.ok(geometry.form.width >= 1000, JSON.stringify(geometry));
     assert.equal(geometry.font, "16px");
     assert.equal(geometry.bg, "rgb(252, 252, 253)");
     assert.ok(geometry.header.width > 0 && geometry.form.width > 0 && geometry.send.width > 0);
@@ -79,7 +90,7 @@ try {
     });
     assert.equal(await page.locator("body").evaluate(el => el.hasAttribute("data-ds-dark-theme")), true);
     assert.deepEqual(errors, []);
-    console.log("PI_LAYOUT_PASS", JSON.stringify({width,height,deviceScaleFactor,font:geometry.font}));
+    console.log("PI_LAYOUT_PASS", JSON.stringify({width,height,deviceScaleFactor,pixelWidth,pixelHeight,font:geometry.font}));
     await context.close();
   }
 } finally {
