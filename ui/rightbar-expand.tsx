@@ -1,5 +1,5 @@
 /** Adapted from upstream SidebarRight/ExpandButton: the conversation header corner seat. */
-import { PanelLeft } from "lucide-react";
+import { PanelRight } from "lucide-react";
 import css from "../vendor/dsh/sidebar-right/ExpandButton.module.css";
 import { Button } from "./pi-primitives.tsx";
 
@@ -26,7 +26,7 @@ export function RightbarExpand({
       data-sidebar-right-expand
       onClick={onExpand}
     >
-      <PanelLeft className={css.icon} />
+      <PanelRight className={css.icon} size={18} />
     </Button>
   );
 }

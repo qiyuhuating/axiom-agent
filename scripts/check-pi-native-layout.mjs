@@ -197,6 +197,82 @@ try {
       assert.deepEqual(counts, { draftChanges: 0, streamChanges: 2, streamLength: 100 });
       console.log("PI_SUBSCRIPTION_PASS", JSON.stringify(counts));
 
+      // The command palette must use actual focus and navigation, without executing prompts.
+      const commandTrigger = page.getByRole("button", { name: "快速操作", exact: true });
+      await commandTrigger.focus();
+      await page.keyboard.press("Control+Shift+P");
+      const palette = page.getByRole("dialog", { name: "快速操作", exact: true });
+      const commandSearch = palette.getByRole("searchbox", { name: "搜索操作" });
+      await palette.waitFor();
+      assert.equal(await commandSearch.evaluate(el => document.activeElement === el), true);
+      await page.mouse.move(10,10);
+      assert.equal(await page.locator(".pi-modal-mask").evaluate(el=>getComputedStyle(el).backgroundColor),"rgba(0, 0, 0, 0.48)");
+      if (process.env.AXIOM_TEST_SCREENSHOTS) await page.screenshot({path:join(process.env.AXIOM_TEST_SCREENSHOTS,"axiom-commands.jpg"),quality:85,animations:"disabled"});
+      await commandSearch.press("ArrowDown");
+      assert.match(await palette.locator('[aria-current="true"]').innerText(),/聚焦输入区/);
+      await commandSearch.fill("not-a-real-command");
+      assert.equal(await palette.getByRole("status").textContent(), "未找到匹配操作");
+      await page.keyboard.press("Escape");
+      await palette.waitFor({state:"detached"});
+      assert.equal(await commandTrigger.evaluate(el => document.activeElement === el), true);
+      await commandTrigger.click();
+      await commandSearch.fill("Composer");
+      await commandSearch.press("Enter");
+      await palette.waitFor({state:"detached"});
+      await page.waitForFunction(() => document.activeElement?.id === "prompt");
+      await page.keyboard.press("Control+Shift+P");
+      await commandSearch.fill("文件");
+      await commandSearch.press("Enter");
+      await palette.waitFor({state:"detached"});
+      await page.locator(".pi-file-explorer").waitFor();
+      await page.locator("#rightbar-collapse").click();
+      console.log("AXIOM_COMMAND_PASS",JSON.stringify({shortcut:true,search:true,escapeFocus:true,composerFocus:true,fileNavigation:true}));
+
+      // Protect reading space before the user deliberately enlarges the workbench.
+      await page.locator("#sidebar-panels").getByRole("button", { name: "文件", exact: true }).click();
+      const separator = page.getByRole("separator", { name: "调整右侧栏宽度" });
+      await separator.waitFor();
+      const columns = () => page.evaluate(() => {
+        const width = selector => document.querySelector(selector).getBoundingClientRect().width;
+        return { sidebar: width(".sidebar"), center: width(".pi-center"), right: width(".inspector") };
+      });
+      const initialColumns = await columns();
+      assert.ok(initialColumns.center >= 720, JSON.stringify(initialColumns));
+      assert.ok(initialColumns.right >= 360 && initialColumns.right <= 480, JSON.stringify(initialColumns));
+      await separator.focus();
+      await separator.press("End");
+      await page.waitForFunction(() => document.querySelector(".axiom-rightbar-resize")?.getAttribute("aria-valuenow") === document.querySelector(".axiom-rightbar-resize")?.getAttribute("aria-valuemax"));
+      const widest = await columns();
+      assert.ok(widest.center >= 560, JSON.stringify(widest));
+      await separator.press("Home");
+      await page.waitForFunction(() => document.querySelector(".axiom-rightbar-resize")?.getAttribute("aria-valuenow") === "300");
+      await separator.press("Shift+ArrowLeft");
+      await page.waitForFunction(() => document.querySelector(".axiom-rightbar-resize")?.getAttribute("aria-valuenow") === "364");
+      // Restore the default test layout before exercising existing file/editor behavior.
+      for(let i=0;i<4;i++) await separator.press("ArrowLeft");
+      await page.waitForFunction(() => document.querySelector(".axiom-rightbar-resize")?.getAttribute("aria-valuenow") === "428");
+      assert.equal(await page.evaluate(() => localStorage.getItem("axiom.rightbar.width")), "428");
+      const edge = await separator.boundingBox();
+      assert.ok(edge);
+      await page.mouse.move(edge.x + edge.width/2,edge.y + edge.height/2);
+      await page.mouse.down();
+      await page.mouse.move(edge.x + edge.width/2 - 36,edge.y + edge.height/2,{steps:6});
+      await page.mouse.up();
+      await page.waitForFunction(() => document.querySelector(".axiom-rightbar-resize")?.getAttribute("aria-valuenow") === "464");
+      assert.equal(await page.evaluate(() => localStorage.getItem("axiom.rightbar.width")), "464");
+      await page.setViewportSize({width:1024,height:900});
+      await page.waitForFunction(() => document.body.classList.contains("workbench-overlay"));
+      assert.equal(await separator.count(),0);
+      const overlay = await columns();
+      assert.ok(overlay.center >= 760,JSON.stringify(overlay));
+      await page.setViewportSize({width:1440,height:900});
+      await separator.waitFor();
+      await page.waitForFunction(() => document.querySelector(".axiom-rightbar-resize")?.getAttribute("aria-valuenow") === "464");
+      await separator.press("ArrowRight");
+      await separator.press("ArrowRight");
+      console.log("AXIOM_COLUMNS_PASS",JSON.stringify({initialColumns,widest,keyboardResize:true,pointerResize:true,overlay,restoredWidth:464}));
+      await page.locator("#rightbar-collapse").click();
+
       // The explorer must open real workspace entries; collapsing and
       // reopening a directory must not issue a second listing request.
       let directoryRequests = 0;

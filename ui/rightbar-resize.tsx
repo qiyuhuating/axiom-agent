@@ -1,19 +1,10 @@
 import { useEffect, useRef } from "react";
 import frameCss from "../vendor/dsh/layout/AppFrame.module.css";
-import {
-  computeColumns,
-  RIGHTBAR_DEFAULT_RATIO,
-  SIDEBAR_DEFAULT,
-} from "../vendor/dsh/layout/columns.ts";
-import { layoutActions, layoutState, useLayout } from "./shell-layout.ts";
+import { layoutActions, layoutState, resolveColumns, useLayout } from "./shell-layout.ts";
 
 export function RightbarResizeHandle() {
   const layout = useLayout();
-  const columns = computeColumns(
-    layout.width,
-    layout.collapsed ? 0 : SIDEBAR_DEFAULT,
-    layout.workbenchOpen ? (layout.rightbarWidth ?? layout.width * RIGHTBAR_DEFAULT_RATIO) : 0,
-  );
+  const columns = resolveColumns(layout);
   const gesture = useRef<{ pointer: number; x: number; width: number } | null>(null);
   const scheduled = useRef<number | null>(null);
   const nextWidth = useRef<number | null>(null);
@@ -56,7 +47,7 @@ export function RightbarResizeHandle() {
       aria-label="调整右侧栏宽度"
       aria-orientation="vertical"
       aria-valuemin={300}
-      aria-valuemax={Math.round(layout.width * 0.7)}
+      aria-valuemax={columns.maxRightbar}
       aria-valuenow={Math.round(columns.rightbar)}
       style={{ left: layout.width - columns.rightbar }}
       onPointerDown={(event) => {
@@ -86,9 +77,16 @@ export function RightbarResizeHandle() {
         if (gesture.current?.pointer === event.pointerId) end(false);
       }}
       onKeyDown={(event) => {
-        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
         event.preventDefault();
-        layoutActions.setRightbarWidth(columns.rightbar + (event.key === "ArrowLeft" ? 16 : -16));
+        const step = event.shiftKey ? 64 : 16;
+        layoutActions.setRightbarWidth(
+          event.key === "Home"
+            ? 300
+            : event.key === "End"
+              ? columns.maxRightbar
+              : columns.rightbar + (event.key === "ArrowLeft" ? step : -step),
+        );
       }}
     />
   );

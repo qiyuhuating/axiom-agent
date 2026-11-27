@@ -35,6 +35,7 @@ import frameCss from "../vendor/dsh/layout/AppFrame.module.css";
 import { writeClipboard } from "../vendor/dsh/primitives/clipboard.ts";
 import settingsCss from "../vendor/dsh/sidebar/SettingsRoot.module.css";
 import sidebarCss from "../vendor/dsh/sidebar/SidebarRoot.module.css";
+import { CommandPalette } from "./command-palette.tsx";
 import { DraftEditor } from "./draft-editor.tsx";
 import { SessionList } from "./dsh-ui.tsx";
 import {
@@ -486,6 +487,15 @@ function App() {
             <span>新建会话</span>
           </button>
         </div>
+        <CommandPalette
+          locked={locked}
+          unavailable={unavailable}
+          onNew={() => {
+            layoutActions.closeDrawer();
+            void run(() => changeSession("new"));
+          }}
+          onTheme={toggleTheme}
+        />
         <nav id="sidebar-panels" className={sidebarCss.panelList} aria-label="工作台页面">
           <MemoSidebarPanels />
         </nav>

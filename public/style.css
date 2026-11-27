@@ -913,7 +913,7 @@ body[data-ds-dark-theme] {
 @media (prefers-reduced-motion:reduce) {.pi-state-dot[data-state=ongoing] {animation:none;}}
 .pi-user-surface {max-width:100%;background:var(--pi-active);border-radius:12px;padding:10px 16px;color:var(--pi-ink);font-size:var(--dsh-content-font-size,16px);line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere;}
 .pi-modal-layer {position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:24px;pointer-events:auto;}
-.pi-modal-mask {position:absolute;inset:0;background:rgba(16,24,28,.42);}
+.pi-modal-mask,.pi-modal-mask:hover:not(:disabled) {position:absolute;inset:0;background:rgb(0 0 0 / .48);}
 .pi-modal-mask[data-blur=true] {backdrop-filter:blur(3px);}
 .pi-modal-card {position:relative;z-index:1;display:flex;flex-direction:column;gap:18px;width:min(420px,100%);max-height:100%;min-width:0;padding:0 0 20px;overflow:hidden;background:var(--pi-base);color:var(--pi-ink);border:1px solid var(--pi-line);border-radius:12px;box-shadow:0 18px 56px rgba(16,24,28,.22);}
 .pi-modal-card:focus {outline:none;}
@@ -1016,3 +1016,23 @@ body.sidebar-collapsed .pi-shell #new {justify-content:center;background:var(--p
 .pi-shell .axiom-chat-column .axiom-message[data-chat-flow-kind='user'] {margin-top:6px;}
 .pi-shell #transcript article.axiom-message {margin-bottom:6px;}
 .pi-shell #transcript article.axiom-message.user {margin-left:0;}
+/* Fast, keyboard-first action launcher with the same monochrome tokens. */
+.axiom-command-trigger {width:100%;display:flex;align-items:center;gap:8px;height:34px;min-height:34px;border:0;border-radius:6px;padding:0 9px;color:var(--pi-muted);font-size:13px;text-align:left;}
+.axiom-command-trigger svg {flex:none;}
+.axiom-command-trigger span {flex:1;}
+.axiom-command-trigger kbd {font:10px/1.4 var(--dsw-font-family);color:var(--pi-muted);white-space:nowrap;}
+body.sidebar-collapsed .axiom-command-trigger {justify-content:center;padding:0;}
+body.sidebar-collapsed .axiom-command-trigger :is(span,kbd) {display:none;}
+.pi-modal-card.axiom-command-dialog {width:min(540px,100%);max-height:min(520px,100%);gap:0;padding:0;}
+.axiom-command-search {display:flex;align-items:center;gap:12px;min-height:62px;border-bottom:1px solid var(--pi-line);padding:0 16px;color:var(--pi-muted);}
+.axiom-command-search input {flex:1;min-width:0;border:0;background:transparent;outline:none;box-shadow:none;color:var(--pi-ink);font-size:15px;}
+.axiom-command-search input:focus-visible {outline:none;box-shadow:none;}
+.axiom-command-search .pi-more-button {font-size:11px;min-height:24px;padding:2px 6px;}
+.axiom-command-results {min-height:0;overflow:auto;padding:8px;}
+.axiom-command-results button {display:flex;align-items:center;width:100%;min-height:39px;gap:10px;padding:7px 10px;border:0;border-radius:6px;text-align:left;color:var(--pi-ink);font-size:14px;}
+.axiom-command-results button[aria-current=true],.axiom-command-results button:hover {background:var(--pi-active);}
+.axiom-command-results button svg {color:var(--pi-muted);flex:none;}
+.axiom-command-results button span {flex:1;}
+.axiom-command-results small,.axiom-command-results p {font-size:12px;color:var(--pi-muted);}
+.axiom-command-results p {margin:12px;}
+.axiom-command-help {display:flex;gap:16px;border-top:1px solid var(--pi-line);padding:10px 16px;font-size:11px;color:var(--pi-muted);}
