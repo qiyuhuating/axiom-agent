@@ -1,16 +1,28 @@
 import {
+  Check,
   ChevronDown,
   Copy,
   Ellipsis,
+  FileText,
   FolderOpen,
   MessageSquareQuote,
   PanelLeft,
   Plus,
+  Search,
   Settings,
   SunMoon,
+  Wrench,
 } from "lucide-react";
 import MarkdownIt from "markdown-it";
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  type ComponentProps,
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { createRoot } from "react-dom/client";
 import assistantCss from "../vendor/dsh/chat/AssistantMarkdown.module.css";
 import actionsCss from "../vendor/dsh/chat/MessageIconActions.module.css";
@@ -38,6 +50,7 @@ import { PiModelSelect } from "./model-select.tsx";
 import {
   action,
   addFiles,
+  appendDraft,
   changeSession,
   connect,
   loadOptions,
@@ -47,7 +60,8 @@ import {
   run,
   submit,
   textOf,
-  useProjection,
+  useProjectionField,
+  useShellProjection,
 } from "./projection.ts";
 import { RightbarExpand } from "./rightbar-expand.tsx";
 import { RightbarResizeHandle } from "./rightbar-resize.tsx";
@@ -68,7 +82,12 @@ const markdown = new MarkdownIt({ html: false, linkify: true }).disable("image")
 const MemoWorkbench = memo(Workbench);
 const MemoSidebarPanels = memo(SidebarPanels);
 const MemoSessionList = memo(SessionList);
-const MemoDraftEditor = memo(DraftEditor);
+const ConnectedDraftEditor = memo(function ConnectedDraftEditor(
+  props: Omit<ComponentProps<typeof DraftEditor>, "draft">,
+) {
+  const draft = useProjectionField("draft");
+  return <DraftEditor {...props} draft={draft} />;
+});
 const MemoObservedChanges = memo(ObservedChanges);
 const MemoDeliverableCards = memo(DeliverableCards);
 const MemoHarnessModeDock = memo(HarnessModeDock);
@@ -79,6 +98,65 @@ const MarkdownMessage = memo(function MarkdownMessage({ text }: { text: string }
     <div className="markdown" dangerouslySetInnerHTML={{ __html: markdown.render(text) }} />
   );
 });
+const LiveMessage = memo(function LiveMessage({ follow }: { follow: () => void }) {
+  const stream = useProjectionField("stream");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: follow after each committed stream update.
+  useLayoutEffect(() => {
+    follow();
+  }, [stream, follow]);
+  if (!stream) return null;
+  return (
+    <article
+      className="axiom-message assistant pi-live-message"
+      data-chat-flow-kind="assistant"
+      aria-label="正在生成"
+    >
+      <div className={assistantCss.root}>
+        <div className={assistantCss.body}>
+          <MarkdownMessage text={stream} />
+        </div>
+      </div>
+    </article>
+  );
+});
+const CopyMessage = memo(function CopyMessage({ text }: { text: string }) {
+  const [feedback, setFeedback] = useState<"idle" | "copied" | "failed">("idle");
+  useEffect(() => {
+    if (feedback === "idle") return;
+    const timer = window.setTimeout(() => setFeedback("idle"), 1400);
+    return () => clearTimeout(timer);
+  }, [feedback]);
+  const label =
+    feedback === "copied" ? "已复制" : feedback === "failed" ? "复制失败，请重试" : "复制消息";
+  return (
+    <button
+      type="button"
+      className={actionsCss.action + " pi-copy"}
+      title={label}
+      aria-label={label}
+      onClick={async () => setFeedback((await writeClipboard(text)) ? "copied" : "failed")}
+    >
+      {feedback === "copied" ? (
+        <Check size={15} aria-hidden="true" />
+      ) : (
+        <Copy size={15} aria-hidden="true" />
+      )}
+    </button>
+  );
+});
+const starterTasks = [
+  { label: "理解代码", prompt: "阅读当前项目，解释主要架构、入口及关键模块。", icon: Search },
+  {
+    label: "定位问题",
+    prompt: "检查当前项目中可复现的缺陷，说明证据并提出最小修复方案。",
+    icon: Wrench,
+  },
+  {
+    label: "审查变更",
+    prompt: "审查当前 Git 变更，找出真实的回归风险与可维护性问题。",
+    icon: FileText,
+  },
+];
 const TranscriptMessages = memo(function TranscriptMessages({
   messages,
   sessionId,
@@ -94,17 +172,7 @@ const TranscriptMessages = memo(function TranscriptMessages({
     const text = textOf(message.content) || message.errorMessage || "";
     if (!text || (message.role !== "user" && message.role !== "assistant")) return null;
     const user = message.role === "user";
-    const copy = (
-      <button
-        type="button"
-        className={actionsCss.action}
-        title="复制消息"
-        aria-label="复制消息"
-        onClick={() => void writeClipboard(text)}
-      >
-        <Copy aria-hidden="true" size={15} />
-      </button>
-    );
+    const copy = <CopyMessage text={text} />;
     return (
       <article
         key={(sessionId ?? "") + ":" + index}
@@ -157,11 +225,26 @@ const TranscriptMessages = memo(function TranscriptMessages({
   });
 });
 function App() {
-  const p = useProjection(),
+  const p = useShellProjection(),
     l = useLayout();
   const files = useRef<HTMLInputElement>(null),
     transcript = useRef<HTMLElement>(null);
   const followingTranscript = useRef(true);
+  const scrollFrame = useRef<number | null>(null);
+  const followLatest = useCallback(() => {
+    if (!followingTranscript.current || scrollFrame.current !== null) return;
+    scrollFrame.current = requestAnimationFrame(() => {
+      scrollFrame.current = null;
+      const element = transcript.current;
+      if (element && followingTranscript.current) element.scrollTop = element.scrollHeight;
+    });
+  }, []);
+  useEffect(
+    () => () => {
+      if (scrollFrame.current !== null) cancelAnimationFrame(scrollFrame.current);
+    },
+    [],
+  );
   const [showJump, setShowJump] = useState(false);
   const sessionId = p.state?.sessionId;
   const [quote, setQuote] = useState<{ text: string; id: number; sessionId?: string } | null>(null);
@@ -187,7 +270,7 @@ function App() {
   );
   const unavailable = !p.connected || p.syncing || p.syncFailed || p.changing || !sessionId;
   const locked = p.busy || unavailable;
-  const empty = p.messages.length === 0 && !p.stream;
+  const empty = p.messages.length === 0 && !p.hasStream;
   const sessionTitle = p.sessions.find((item) => item.id === sessionId)?.name || "新会话";
   const workspace = p.state?.workspace ?? "";
   const workspaceName = workspace.split(/[\\/]/).filter(Boolean).at(-1) || "工作区";
@@ -225,11 +308,10 @@ function App() {
     setShowJump(false);
     setQuote(null);
   }, [sessionId]);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: follow committed content only while the reader is near the end.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: follow when committed messages or tool content changes.
   useLayoutEffect(() => {
-    const element = transcript.current;
-    if (element && followingTranscript.current) element.scrollTop = element.scrollHeight;
-  }, [p.messages, p.stream, p.tools, sessionId]);
+    followLatest();
+  }, [p.messages, p.tools, sessionId, followLatest]);
   const toggleTheme = () => {
     const next = dark ? "light" : "dark";
     localStorage.setItem("axiom.appearance", next);
@@ -453,8 +535,10 @@ function App() {
                     π
                   </span>
                   <span className={heroCss.titleGroup}>
-                    <span>开始一项任务</span>
-                    <small className="pi-hero-description">与 Pi 一起阅读、编写和运行代码。</small>
+                    <span className="pi-welcome-title">今天做什么？</span>
+                    <small className="pi-hero-description">
+                      从当前工作区开始。阅读代码、解决问题，或构建新的功能。
+                    </small>
                   </span>
                 </div>
               )}
@@ -467,19 +551,7 @@ function App() {
                 />
                 <MemoObservedChanges tools={p.tools} />
                 <MemoDeliverableCards tools={p.tools} />
-                {p.stream && (
-                  <article
-                    className="axiom-message assistant"
-                    data-chat-flow-kind="assistant"
-                    aria-label="正在生成"
-                  >
-                    <div className={assistantCss.root}>
-                      <div className={assistantCss.body}>
-                        <MarkdownMessage text={p.stream} />
-                      </div>
-                    </div>
-                  </article>
-                )}
+                <LiveMessage follow={followLatest} />
               </div>
             </section>
             {showJump && (
@@ -517,14 +589,16 @@ function App() {
                 </div>
               )}
 
-              <div className="pi-context-strip">
+              <div className="pi-context-strip" hidden={empty && p.tools.length === 0}>
                 <span title={workspace}>
                   <FolderOpen size={15} aria-hidden="true" />
                   {workspaceName}
                 </span>
-                <span>
-                  {p.tools.filter((tool) => tool.finished).length}/{p.tools.length} 工具已完成
-                </span>
+                {p.tools.length > 0 && (
+                  <span>
+                    {p.tools.filter((tool) => tool.finished).length}/{p.tools.length} 工具已完成
+                  </span>
+                )}
                 {p.tools.some((tool) => !tool.finished) && (
                   <span className="pi-active-tool">
                     正在执行：{p.tools.findLast((tool) => !tool.finished)?.name}
@@ -556,11 +630,10 @@ function App() {
                     </button>
                   ))}
                 </div>
-                <MemoDraftEditor
+                <ConnectedDraftEditor
                   key={p.state?.sessionId}
                   quote={quote?.sessionId === sessionId ? quote : null}
                   onQuoteConsumed={clearQuote}
-                  draft={p.draft}
                   hasAttachments={p.attachments.length > 0}
                   disabled={unavailable}
                   sessionId={p.state?.sessionId}
@@ -664,6 +737,27 @@ function App() {
                   </div>
                 </div>
               </form>
+              {empty && (
+                <div className="pi-starter-tasks">
+                  {starterTasks.map(({ label, prompt, icon: Icon }) => (
+                    <button
+                      key={label}
+                      type="button"
+                      disabled={unavailable}
+                      onClick={() => {
+                        appendDraft(prompt);
+                        document.getElementById("prompt")?.focus();
+                      }}
+                    >
+                      <Icon size={16} aria-hidden="true" />
+                      {label}
+                    </button>
+                  ))}
+                  <span className="pi-key-hint">
+                    <kbd>Ctrl</kbd> + <kbd>Enter</kbd> 发送
+                  </span>
+                </div>
+              )}
               <div className={inputCss.dock} data-composer-dock>
                 <MemoPlanDock key={p.state?.sessionId} />
               </div>

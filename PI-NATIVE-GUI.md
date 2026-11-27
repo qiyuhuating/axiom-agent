@@ -8,6 +8,16 @@ The initial shell uses its own visual tokens, larger text, explicit workspace an
 
 The Windows executable declares PerMonitorV2 DPI awareness with a per-monitor fallback. Tauri sizes the initial window from the primary monitor work area in logical pixels; WebView2 owns rasterization at the monitor device scale. The reading column grows with available space up to 1120 CSS pixels. No manual device-pixel-ratio transform is applied.
 
+## Design contract
+
+The desktop workbench borrows the typography, grid, contrast and inspection principles of [Taste Skill](https://github.com/Leonxlnx/taste-skill) and the interaction guidance of [Emil Design Engineering](https://github.com/emilkowalski/skills), not their marketing-page layouts or animation libraries.
+
+- Neutral graphite and restrained teal; a single primary accent, readable light and dark surfaces.
+- Aligned reading and composer columns, system CJK fonts and responsive model controls.
+- Starter tasks only append editable draft text. They do not execute a command or call a provider.
+- Real clipboard feedback, visible keyboard focus and reduced-motion support.
+- Draft and live response subscribers are separate from the shell. The shell snapshot stays stable during draft changes and intermediate text deltas; autoscroll is coalesced per animation frame.
+
 ## Verification
 
 - npm ci, npm run lint, npm run build:ui, npm test
@@ -15,6 +25,6 @@ The Windows executable declares PerMonitorV2 DPI awareness with a per-monitor fa
 
     node scripts/check-pi-native-layout.mjs
 
-The browser test uses a temporary Pi profile and workspace, real local server, twelve viewport/DPR combinations, including 2560×1440 and 3840×2160 at 100%, 125%, 150%, and 200% scaling, and no paid inference. The test reads the actual screenshot PNG dimensions in device pixels, with a one-pixel rounding tolerance, and checks layout. The DPR override tests browser rendering and layout, not Windows per-monitor DPI transitions or an installed Tauri/WebView2 package.
+The browser test uses a temporary Pi profile and workspace, real local server, twelve viewport/DPR combinations, including 2560×1440 and 3840×2160 at 100%, 125%, 150%, and 200% scaling, and no paid inference. The test reads the actual screenshot PNG dimensions in device pixels, with a one-pixel rounding tolerance, and checks layout, center alignment, starter tasks, draft preservation, focus, model control geometry, and theme switching. A synthetic Pi stream also verifies the visible response, clipboard output, and shell snapshot identity (100 draft writes produce zero shell changes; 100 text deltas plus message completion produce two). These counts measure state invalidation, not application FPS. The DPR override tests browser rendering and layout, not Windows per-monitor DPI transitions or an installed Tauri/WebView2 package.
 
 Subsequent work should migrate the remaining inherited view components into owned Pi-oriented components, with independent accessibility and native desktop verification.

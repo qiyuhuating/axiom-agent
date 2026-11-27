@@ -123,9 +123,43 @@ let snapshot: Snapshot = {
   error: "",
   notice: "",
 };
+function selectShell(s: Snapshot) {
+  return {
+    state: s.state,
+    messages: s.messages,
+    tools: s.tools,
+    models: s.models,
+    levels: s.levels,
+    sessions: s.sessions,
+    dialogs: s.dialogs,
+    attachments: s.attachments,
+    syncing: s.syncing,
+    syncFailed: s.syncFailed,
+    changing: s.changing,
+    busy: s.busy,
+    retrying: s.retrying,
+    connected: s.connected,
+    error: s.error,
+    notice: s.notice,
+    hasStream: Boolean(s.stream),
+  };
+}
+let shellSnapshot = selectShell(snapshot);
+export const getShellSnapshot = () => shellSnapshot;
 const listeners = new Set<() => void>();
 function update(patch: Partial<Snapshot>) {
   snapshot = { ...snapshot, ...patch };
+  // The editor and live response subscribe separately. Only the first/last
+  // stream chunk changes the shell's empty-state decision.
+  if (
+    Boolean(snapshot.stream) !== shellSnapshot.hasStream ||
+    (Object.keys(patch) as (keyof Snapshot)[]).some(
+      (key) =>
+        key in shellSnapshot && snapshot[key] !== shellSnapshot[key as keyof typeof shellSnapshot],
+    )
+  ) {
+    shellSnapshot = selectShell(snapshot);
+  }
   for (const listener of listeners) listener();
 }
 const subscribe = (listener: () => void) => {
@@ -137,6 +171,9 @@ const subscribe = (listener: () => void) => {
 export const getSnapshot = () => snapshot;
 export function useProjection() {
   return useSyncExternalStore(subscribe, getSnapshot);
+}
+export function useShellProjection() {
+  return useSyncExternalStore(subscribe, getShellSnapshot);
 }
 export function useProjectionField<K extends keyof Snapshot>(key: K): Snapshot[K] {
   return useSyncExternalStore(subscribe, () => snapshot[key]);
